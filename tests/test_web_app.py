@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi.testclient import TestClient
+import httpx
 
 from instabotai.application import InstabotApplication, PlanResult
 from instabotai.domain import ActionType, ApprovalState, PlannedAction, ResearchPage, ResearchReport
@@ -130,16 +130,17 @@ class FakeService:
         )
 
 
-def client() -> tuple[TestClient, FakeService]:
+def client() -> tuple[httpx.AsyncClient, FakeService]:
     active_settings = settings()
     service = FakeService(active_settings)
-    return TestClient(create_app(settings=active_settings, service=service)), service
+    transport = httpx.ASGITransport(app=create_app(settings=active_settings, service=service))
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver"), service
 
 
-def test_consumer_console_serves_real_ai_surface_and_security_headers() -> None:
+async def test_consumer_console_serves_real_ai_surface_and_security_headers() -> None:
     web, _ = client()
-
-    response = web.get("/")
+    async with web:
+        response = await web.get("/")
 
     assert response.status_code == 200
     assert "AI Studio" in response.text
@@ -149,10 +150,10 @@ def test_consumer_console_serves_real_ai_surface_and_security_headers() -> None:
     assert "default-src 'self'" in response.headers["content-security-policy"]
 
 
-def test_runtime_api_is_secret_free_and_reports_canonical_authorities() -> None:
+async def test_runtime_api_is_secret_free_and_reports_canonical_authorities() -> None:
     web, _ = client()
-
-    response = web.get("/api/runtime")
+    async with web:
+        response = await web.get("/api/runtime")
     payload = response.json()
     serialized = response.text
 
@@ -166,10 +167,10 @@ def test_runtime_api_is_secret_free_and_reports_canonical_authorities() -> None:
     assert response.headers["cache-control"] == "no-store"
 
 
-def test_ai_probe_endpoint_returns_real_contract_shape() -> None:
+async def test_ai_probe_endpoint_returns_real_contract_shape() -> None:
     web, _ = client()
-
-    response = web.post("/api/ai/probe")
+    async with web:
+        response = await web.post("/api/ai/probe")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -181,24 +182,24 @@ def test_ai_probe_endpoint_returns_real_contract_shape() -> None:
     }
 
 
-def test_ai_plan_endpoint_preserves_evidence_context_and_pending_approval() -> None:
+async def test_ai_plan_endpoint_preserves_evidence_context_and_pending_approval() -> None:
     web, service = client()
-
-    response = web.post(
-        "/api/ai/plan",
-        json={
-            "objective": "Publish the approved announcement.",
-            "evidence": [
-                {
-                    "evidence_id": "evidence-1",
-                    "source": "launch brief",
-                    "content": "The announcement is approved.",
-                    "confidence": 1.0,
-                }
-            ],
-            "context": {"campaign": "fall-launch"},
-        },
-    )
+    async with web:
+        response = await web.post(
+            "/api/ai/plan",
+            json={
+                "objective": "Publish the approved announcement.",
+                "evidence": [
+                    {
+                        "evidence_id": "evidence-1",
+                        "source": "launch brief",
+                        "content": "The announcement is approved.",
+                        "confidence": 1.0,
+                    }
+                ],
+                "context": {"campaign": "fall-launch"},
+            },
+        )
 
     assert response.status_code == 200
     payload = response.json()
@@ -209,41 +210,41 @@ def test_ai_plan_endpoint_preserves_evidence_context_and_pending_approval() -> N
     assert service.last_plan["evidence"][0].evidence_id == "evidence-1"
 
 
-def test_ai_plan_requires_at_least_one_evidence_record() -> None:
+async def test_ai_plan_requires_at_least_one_evidence_record() -> None:
     web, _ = client()
-
-    response = web.post(
-        "/api/ai/plan",
-        json={
-            "objective": "Publish the approved announcement.",
-            "evidence": [],
-            "context": {},
-        },
-    )
+    async with web:
+        response = await web.post(
+            "/api/ai/plan",
+            json={
+                "objective": "Publish the approved announcement.",
+                "evidence": [],
+                "context": {},
+            },
+        )
 
     assert response.status_code == 422
 
 
-def test_decision_audit_endpoint_honors_bounded_limit() -> None:
+async def test_decision_audit_endpoint_honors_bounded_limit() -> None:
     web, service = client()
-
-    response = web.get("/api/ai/decisions?limit=11")
+    async with web:
+        response = await web.get("/api/ai/decisions?limit=11")
 
     assert response.status_code == 200
     assert service.last_limit == 11
     assert response.json()[0]["decision_id"] == service.decision.decision_id
 
 
-def test_research_endpoint_routes_through_canonical_research_service() -> None:
+async def test_research_endpoint_routes_through_canonical_research_service() -> None:
     web, service = client()
-
-    response = web.post(
-        "/api/research",
-        json={
-            "objective": "Research current fitness marketing themes.",
-            "seed_urls": ["https://example.com/report"],
-        },
-    )
+    async with web:
+        response = await web.post(
+            "/api/research",
+            json={
+                "objective": "Research current fitness marketing themes.",
+                "seed_urls": ["https://example.com/report"],
+            },
+        )
 
     assert response.status_code == 200
     assert response.json()["pages"][0]["relevance"] == 0.8
