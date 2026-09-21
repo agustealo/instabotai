@@ -65,12 +65,12 @@ def supportive_review(*, abstain: bool = False) -> dict[str, object]:
 
 
 def settings(**overrides: object) -> Settings:
-    return Settings(
-        _env_file=None,
-        ai_max_retries=0,
-        ai_min_decision_score=0.5,
-        **overrides,
-    )
+    values: dict[str, object] = {
+        "ai_max_retries": 0,
+        "ai_min_decision_score": 0.5,
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
 
 
 def evidence() -> list[EvidenceItem]:
