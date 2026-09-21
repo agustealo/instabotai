@@ -1,21 +1,19 @@
 # InstabotAI Product Surfaces
 
-This page is the canonical visual and operational evidence index for the current InstabotAI revival.
+This page is the canonical visual and operational evidence index for the current InstabotAI 2.x revival.
 
 ## Evidence policy
 
-Documentation must represent a surface that exists in the current product or a real verification surface produced by the current build. Do not add speculative dashboards, design concepts, placeholder UI, fabricated command output, mock production states, or screenshots copied from the retired application.
+Documentation must represent a surface that exists in the current product or real verification output produced by a runnable build. Do not add speculative dashboards, placeholder UI, fabricated command output, mock production states, credential-dependent success screens presented as generic evidence, or screenshots copied from the retired application.
 
-The consumer console is a local-first web application backed by the same canonical `InstabotApplication`, `IntelligenceEngine`, `DecisionJournal`, `CampaignRuntime`, provider adapters, research service, policy engine, and durable-state authorities used by the CLI. The GUI must not implement a parallel reasoning or execution stack.
+The consumer console is backed by the same canonical `InstabotApplication`, `IntelligenceEngine`, `DecisionJournal`, `CampaignRuntime`, provider adapters, research service, policy engine, and durable-state authorities used by the CLI. The GUI does not implement a parallel reasoning or execution stack.
 
 ## Consumer console
 
 **Launch:** `instabotai ui`  
 **Default bind:** `127.0.0.1:8765`  
 **Remote bind:** rejected unless `INSTABOTAI_UI_ALLOW_REMOTE=true` is deliberately enabled.  
-**Write authority:** policy-mediated only. Browser actions can request approval or execution of durable campaign jobs, but actual writes continue through the canonical approval, policy, quota, idempotency, ledger, and provider path.
-
-The console currently ships these surfaces.
+**Write authority:** policy-mediated only. Browser requests continue through durable campaign state, approval, policy, quota, idempotency, ledger, and provider authorities.
 
 ### Overview
 
@@ -25,11 +23,11 @@ The console currently ships these surfaces.
 - Instagram provider readiness;
 - decision-journal status;
 - research budget and confidence target;
-- write-policy status and approval requirement.
+- scheduler and write-policy state.
 
 ### AI Studio
 
-The AI Studio is a full operator surface for the genuine intelligence system rather than a chat-shaped wrapper around hard-coded automation.
+The AI Studio is an operator surface for the genuine intelligence system, not a decorative chat wrapper.
 
 It provides:
 
@@ -37,16 +35,15 @@ It provides:
 - objective authoring;
 - typed evidence authoring with stable evidence IDs, source, confidence, and content;
 - bounded JSON context;
-- planner inference;
-- schema validation and allowed-action containment;
+- planner inference and schema validation;
+- allowed-action containment;
 - deterministic evidence/history/utility/risk scoring;
 - independent critic review;
 - abstention inspection;
-- final reviewed score;
-- stable decision ID;
+- final reviewed score and stable decision ID;
 - provider/model identity;
 - candidate confidence, expected utility, risk, and evidence references;
-- critic support, critic risk, objections, and missing evidence;
+- critic objections and missing evidence;
 - assumptions and uncertainty;
 - pending-action payload inspection;
 - copyable decision JSON.
@@ -57,63 +54,50 @@ Planning from AI Studio never executes an Instagram write directly.
 
 The Campaigns surface is the durable automation workspace.
 
-Campaign creation exposes:
+Campaign creation exposes campaign name/objective, supervised or policy-managed mode, planning cadence, action delay, typed evidence, bounded context, and optional public-web research seeds.
 
-- campaign name and business objective;
-- supervised or policy-managed mode;
-- planning cadence;
-- action delay;
-- typed manual evidence;
-- bounded JSON context;
-- optional public-web research before each plan;
-- permitted research seed URLs.
+Lifecycle controls expose draft, active, paused, and archived states; plan-now; next/last planning time; planning failure count; and current campaign evidence/mode.
 
-Campaign lifecycle controls expose:
-
-- draft state;
-- activation;
-- pause;
-- archive;
-- immediate reviewed `plan-now` execution;
-- next/last planning time;
-- planning failure count;
-- current evidence and mode state.
-
-Campaign job controls expose:
+Job controls expose:
 
 - pending approval, scheduled, leased, retry, succeeded, failed, rejected, and cancelled states;
-- action type, reason, confidence, schedule, attempt count, decision ID, and job ID;
-- explicit approve/reject controls for pending supervised work;
+- action type, reason, confidence, schedule, attempts, decision ID, and job ID;
+- explicit approve/reject controls;
 - controlled execution only from executable durable states;
-- cancellation of open unleased jobs;
-- action payload and durable idempotency-key inspection;
-- last execution error;
-- provider result inspection;
-- explicit post-success business reward and note recording.
+- cancellation of open unleased work;
+- action payload and idempotency-key inspection;
+- execution error and provider-result inspection;
+- explicit post-success business reward/note recording.
 
-A provider accepting an action does not automatically become a positive AI-learning signal. `ExperienceStore` receives campaign feedback only when a business outcome is explicitly recorded after successful provider execution.
+Provider success is not automatically treated as business success. `ExperienceStore` receives campaign feedback only after an explicit business outcome is recorded.
 
-The browser does not bypass the scheduler or write spine. Campaign actions still flow through `CampaignRuntime` -> `AutomationService` -> `AutomationPolicy` -> `ActionLedger` -> selected provider.
+The browser does not bypass the write spine:
+
+`CampaignRuntime -> AutomationService -> AutomationPolicy -> ActionLedger -> Instagram provider`
 
 ### Decision Audit
 
 - newest-first durable `DecisionJournal` feed;
-- decision ID, objective, score, selected/abstained state, action, timestamp, provider, and model;
-- client-side filtering;
-- click-through into the full AI decision inspector.
+- decision ID, objective, reviewed score, selected/abstained state, action, timestamp, provider, and model;
+- filtering and click-through into the full AI inspector.
 
 ### Adaptive Research
 
-- objective input;
-- multiple public-web seed URLs;
-- canonical Crawl4AI research service;
-- confidence and early-stop state;
-- per-page relevance;
-- extracted source excerpts;
-- policy-blocked URLs;
-- failed URLs.
+The consumer research surface uses the canonical Crawl4AI-backed service and exposes objective, multiple seed URLs, confidence, early-stop state, per-page relevance, excerpts, blocked URLs, and failed URLs.
 
-Meta-owned social domains remain blocked by the generic crawler by default. Instagram account data belongs to the explicit provider layer.
+The egress boundary now includes:
+
+- HTTP/HTTPS-only destinations;
+- no URL userinfo credentials;
+- blocked-domain and optional allowed-domain policy;
+- rejection of unsafe literal IP addresses;
+- DNS resolution before fetch, requiring every returned address to be globally routable;
+- rejection of loopback, RFC1918/private, link-local, multicast, reserved, and unspecified addresses;
+- checks for IPv4-mapped IPv6, 6to4, Teredo, and NAT64 embedded addresses;
+- Chromium request routing that revalidates every HTTP(S) navigation, redirect, and subresource before continuing;
+- final fetched-URL validation before accepting content.
+
+Meta-owned social domains remain blocked by default. Instagram account data belongs to provider adapters rather than the generic crawler.
 
 ### Account
 
@@ -125,52 +109,49 @@ Meta-owned social domains remain blocked by the generic crawler by default. Inst
 
 ## Durable worker surface
 
-`instabotai worker` is the recoverable campaign scheduler/execution worker. `instabotai worker --once` runs one deterministic tick for operator verification or external scheduling.
+`instabotai worker` is the recoverable campaign scheduler/execution worker. `instabotai worker --once` performs one deterministic tick for verification or external scheduling.
 
-The worker:
+The worker claims a due campaign using an expiring lease, gathers evidence/research, calls the canonical intelligence engine, journals the reviewed decision, creates at most one open campaign job, waits for approval when required, claims executable work using an execution lease, writes through the canonical automation service, and persists retry/success/failure state. Business-outcome learning remains explicit after provider success.
 
-1. claims one due campaign with an expiring planning lease;
-2. gathers campaign evidence and optional permitted research;
-3. calls the single canonical `IntelligenceEngine`;
-4. journals the reviewed decision;
-5. creates at most one open campaign job;
-6. waits for approval when required;
-7. claims one due executable job with an expiring execution lease;
-8. executes through the canonical write service;
-9. persists retry/success/failure state;
-10. leaves business-outcome learning to an explicit post-success record.
+Stale leases are recoverable. Retries keep the original action identity rather than minting replacement work.
 
-Stale leases are recoverable. Retries remain bound to the original idempotency identity rather than generating replacement actions.
+## Write retry and idempotency boundary
+
+The official Graph provider automatically retries only safe/read methods (`GET`, `HEAD`, and `OPTIONS`). POST requests are single-dispatch at the provider layer.
+
+If a POST times out or otherwise has an unknown remote outcome, it raises `AmbiguousWriteError`. `AutomationService` records that action as a non-retryable failure in `ActionLedger`; the same idempotency key cannot be replayed, and the ambiguous action continues to count against the daily quota because Instagram may already have completed it.
+
+Known explicit rejections such as rate limiting can remain retryable at the outer durable scheduler layer, but only for the exact same action identity/payload.
+
+Daily quota checking and reservation occur atomically in SQLite and include in-flight reservations, succeeded actions, and ambiguous non-retryable writes.
 
 ## Browser/API security boundary
 
-The consumer API adds browser-specific safeguards on top of existing application authorities:
+The consumer API adds browser-specific safeguards on top of application authorities:
 
 - loopback-only bind by default;
 - explicit opt-in for non-loopback binds;
-- `Content-Security-Policy` with self-only scripts/styles/connectivity;
+- self-only CSP for scripts/styles/connectivity;
 - `X-Frame-Options: DENY`;
 - `X-Content-Type-Options: nosniff`;
 - `Referrer-Policy: no-referrer`;
 - restrictive `Permissions-Policy`;
 - `Cache-Control: no-store` on `/api/*`;
-- bounded AI concurrency;
-- separately bounded research concurrency;
-- separately bounded campaign planning/execution concurrency;
+- independently bounded AI, research, and campaign concurrency;
 - structured provider/runtime/campaign errors;
 - no browser disclosure of unexpected server stack traces.
 
-The Campaigns frontend is split into self-hosted browser modules rather than growing the original console script into another monolith. The bootstrap preserves the existing core console as `app-core.js`, mounts the campaign shell separately, and guards initialization across `DOMContentLoaded` timing.
+Campaign browser code remains modular: the original core console is preserved separately from campaign bootstrap/UI modules, and startup is guarded across `DOMContentLoaded` timing.
 
 ## Runtime diagnostics
 
 **Surface:** `instabotai doctor`  
 **Purpose:** inspect runtime configuration without contacting Instagram or a reasoning model.  
-**Secrets:** values are reported as configured/not configured; secret values are not printed.
+**Secrets:** reported only as configured/not configured.
 
 ![InstabotAI runtime diagnostics](screenshots/runtime-doctor.svg)
 
-The existing diagnostic screenshot remains tied to the real build that produced it. It is not relabeled as a newer capture simply because the runtime has advanced.
+The screenshot remains tied to the build that actually produced it. It is not silently relabeled as a newer capture.
 
 ## Release evidence
 
@@ -180,64 +161,63 @@ The canonical GitHub Actions Quality Gate proves the proposed source tree instal
 
 The gate requires:
 
-- `actions/checkout@v7` and `actions/setup-python@v7`;
 - Python 3.12 package/development installation;
 - Ruff across `instabotai` and tests;
 - strict mypy across production source;
 - complete pytest suite;
-- consumer static-asset/API regression coverage;
-- JavaScript syntax validation through Node when available on the test runner;
-- installed `instabotai doctor` package smoke;
-- consumer FastAPI application import/creation smoke;
+- consumer static-asset/API regressions;
+- JavaScript parser validation through Node when available;
+- installed `instabotai doctor` smoke;
+- FastAPI application creation smoke;
 - Docker image build;
 - packaged `instabotai doctor` inside Docker;
-- actual consumer console startup inside Docker;
-- successful HTTP response from the running container's `/healthz` endpoint.
+- consumer-console startup inside Docker;
+- successful container `/healthz` response.
 
 ## Operator surface matrix
 
-| Surface | Current status | Contacts external systems | Write authority |
+| Surface | Status | External systems | Write authority |
 | --- | --- | --- | --- |
 | `instabotai doctor` | Implemented | No | None |
-| `instabotai ai-check` | Implemented | Configured reasoning model | None |
-| `instabotai plan` | Implemented | Configured reasoning model | Produces only a pending action |
-| `instabotai decisions` | Implemented | Local SQLite state | Read-only |
-| `instabotai profile` | Implemented | Selected Instagram provider | Read-only |
-| `instabotai research` | Implemented with research extra | Public web through research policy | None |
-| `instabotai campaign-create` | Implemented | Local durable state | Creates draft only |
-| `instabotai campaign-plan` | Implemented | Reasoning model and optional research | Produces durable job or abstention |
-| `instabotai campaign-approve/reject` | Implemented | Local durable state | Human approval state only |
-| `instabotai campaign-execute` | Implemented | Selected Instagram provider | Policy-mediated canonical write path |
+| `instabotai ai-check` | Implemented | Reasoning model | None |
+| `instabotai plan` | Implemented | Reasoning model | Pending action only |
+| `instabotai decisions` | Implemented | Local SQLite | Read-only |
+| `instabotai profile` | Implemented | Instagram provider | Read-only |
+| `instabotai research` | Implemented with research extra | Public web through hardened egress policy | None |
+| `instabotai campaign-create` | Implemented | Local durable state | Draft only |
+| `instabotai campaign-plan` | Implemented | Model + optional research | Durable job or abstention |
+| `instabotai campaign-approve/reject` | Implemented | Local durable state | Approval state only |
+| `instabotai campaign-execute` | Implemented | Instagram provider | Canonical policy-mediated path |
 | `instabotai campaign-outcome` | Implemented | Local durable state | Learning signal only |
-| `instabotai worker` | Implemented | Model/research/provider as work requires | Policy-mediated canonical write path |
-| Consumer Overview | Implemented | Local runtime only | None |
-| Consumer AI Studio | Implemented | Configured reasoning model | Produces only a pending action |
-| Consumer Campaigns | Implemented | Model/research/provider as requested | Approval + policy-mediated execution only |
-| Consumer Decision Audit | Implemented | Local SQLite state | Read-only |
-| Consumer Research | Implemented with research extra | Public web through research policy | None |
-| Consumer Account | Implemented | Selected Instagram provider | Read-only |
-| Durable campaign scheduler | Implemented | Canonical intelligence/research/provider authorities | Cannot bypass global policy |
+| `instabotai worker` | Implemented | Model/research/provider as work requires | Canonical policy-mediated path |
+| Consumer Overview | Implemented | Local runtime | None |
+| Consumer AI Studio | Implemented | Reasoning model | Pending action only |
+| Consumer Campaigns | Implemented | Model/research/provider as requested | Approval + canonical execution |
+| Consumer Decision Audit | Implemented | Local SQLite | Read-only |
+| Consumer Research | Implemented | Public web through hardened egress policy | None |
+| Consumer Account | Implemented | Instagram provider | Read-only |
 
-## Current verification baseline
+## Security-hardening verification baseline
 
-The campaign backend and consumer workspace have been validated together on the live PR branch with:
+The SSRF and ambiguous-write hardening code was validated on `61bb6cd6ae0b5411723a3f4b04e4b63fd7e43596` with Quality Gate #135:
 
 - Ruff green;
 - strict mypy green across 26 production source files;
-- 44 pytest tests green, including campaign lifecycle/recovery and shipped-JavaScript parser coverage;
+- **53 pytest tests passed in 7.29s**;
+- DNS/private-address and browser redirect-route regressions green;
+- safe-read retry and single-dispatch POST regressions green;
+- ambiguous-write non-replay/idempotency/quota regressions green;
 - package smoke green;
-- Docker build green;
-- Docker `instabotai doctor` green;
-- Docker consumer-console startup green;
-- container `/healthz` probe green.
+- Docker build and packaged runtime smoke green;
+- consumer-console startup and `/healthz` green.
 
-The PR description and GitHub Actions run are the authority for the latest exact commit SHA. This document intentionally avoids pretending an older screenshot was captured from a newer head.
+The PR description and newest exact-head GitHub Actions run remain the authority if documentation-only commits advance the branch after this baseline.
 
-## Why live authenticated screenshots remain selective
+## Why authenticated screenshots remain selective
 
-A real `ai-check` requires a reachable model. A real Instagram profile or write requires account credentials. Generic repository documentation must not manufacture a successful provider result, embed private account data, or substitute mock content just to make the product look populated.
+A real `ai-check` requires a reachable model. Real Instagram profile/write evidence requires account credentials. Repository documentation must not manufacture provider success, embed private account data, or substitute mock content just to make the product look populated.
 
-When a new consumer-console screenshot is committed, it must be captured from a current runnable build with secrets and personal account information absent or redacted, and its exact head or release must be recorded here.
+When a new consumer-console screenshot is committed, it must come from a current runnable build with secrets and personal account information absent or redacted, and its exact head or release must be recorded here.
 
 ## Updating this page
 
@@ -245,10 +225,8 @@ When a product surface changes:
 
 1. verify it against the current exact-head build;
 2. capture only real product/runtime output;
-3. remove or redact secrets, tokens, personal account data, and private identifiers;
+3. remove or redact secrets and private identifiers;
 4. store visual captures under `docs/screenshots/`;
-5. record the exact head or release that produced them;
-6. update this matrix and the README;
-7. delete obsolete screenshots when the corresponding UI or command no longer exists.
-
-This keeps documentation synchronized with the product instead of turning it into a museum of stale states.
+5. record the exact head/release that produced them;
+6. update this matrix and README;
+7. remove obsolete visual evidence when the corresponding surface no longer exists.
