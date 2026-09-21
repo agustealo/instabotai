@@ -13,9 +13,10 @@ import ipaddress
 import json
 import socket
 import tempfile
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
@@ -30,8 +31,8 @@ class PrivateInstagramProviderError(RuntimeError):
 class PrivateInstagramProvider:
     """Policy-compatible adapter around the maintained ``instagrapi`` client."""
 
-    _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
-    _MAX_IMAGE_REDIRECTS = 5
+    _REDIRECT_STATUSES: ClassVar[frozenset[int]] = frozenset({301, 302, 303, 307, 308})
+    _MAX_IMAGE_REDIRECTS: ClassVar[int] = 5
 
     def __init__(self, settings: Settings, client: Any | None = None) -> None:
         self._settings = settings
@@ -232,7 +233,9 @@ class PrivateInstagramProvider:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise PrivateInstagramProviderError(f"could not load {label} from {path}: {exc}") from exc
+            raise PrivateInstagramProviderError(
+                f"could not load {label} from {path}: {exc}"
+            ) from exc
         if not isinstance(raw, dict):
             raise PrivateInstagramProviderError(f"{label} must contain a JSON object")
         return raw
@@ -294,10 +297,8 @@ class PrivateInstagramProvider:
 
     @staticmethod
     def _restrict_file(path: Path) -> None:
-        try:
+        with suppress(OSError):
             path.chmod(0o600)
-        except OSError:
-            pass
 
     async def _download_image(self, image_url: str) -> Path:
         current_url = image_url
