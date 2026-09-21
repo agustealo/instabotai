@@ -355,7 +355,7 @@ class PrivateInstagramProvider:
             port = parsed.port or (443 if parsed.scheme == "https" else 80)
             return list(
                 {
-                    item[4][0]
+                    str(item[4][0])
                     for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
                 }
             )
