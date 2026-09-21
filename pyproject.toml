@@ -8,7 +8,8 @@ version = "2.0.0a1"
 description = "Adaptive AI decision intelligence and policy-governed Instagram automation"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { file = "LICENSE" }
+license = "RPL-1.5"
+license-files = ["LICENSE", "LICENSE_PREMIUM"]
 authors = [{ name = "InstabotAI maintainers" }]
 dependencies = [
   "fastapi>=0.141.1,<0.142",
