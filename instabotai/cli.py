@@ -10,7 +10,13 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 
-from instabotai.intelligence import EvidenceItem, build_intelligence_engine
+from instabotai.intelligence import (
+    DecisionJournal,
+    EvidenceItem,
+    build_intelligence_engine,
+    build_reasoning_model,
+    probe_reasoning_model,
+)
 from instabotai.providers import build_instagram_provider
 from instabotai.research import AdaptiveResearchService, Crawl4AIFetcher, ResearchAccessPolicy
 from instabotai.settings import get_settings
@@ -73,6 +79,38 @@ def doctor() -> None:
         "state_db_path": settings.state_db_path,
     }
     console.print_json(json.dumps(checks))
+
+
+@app.command("ai-check")
+def ai_check() -> None:
+    """Perform a genuine structured inference round trip to the configured AI model."""
+
+    async def run() -> None:
+        model = build_reasoning_model(get_settings())
+        try:
+            probe = await probe_reasoning_model(model)
+            console.print_json(probe.model_dump_json())
+        finally:
+            await _close_provider(model)
+
+    asyncio.run(run())
+
+
+@app.command("decisions")
+def decisions(
+    limit: Annotated[
+        int,
+        typer.Option("--limit", min=1, max=500, help="Newest decisions to display."),
+    ] = 25,
+) -> None:
+    """Display the newest durable AI decisions and abstentions."""
+
+    journal = DecisionJournal(get_settings().state_db_path)
+    try:
+        rows = [decision.model_dump(mode="json") for decision in journal.recent(limit)]
+        console.print_json(json.dumps(rows, default=str))
+    finally:
+        journal.close()
 
 
 @app.command("profile")
