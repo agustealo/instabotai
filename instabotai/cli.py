@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 from rich.console import Console
 
+from instabotai.intelligence import EvidenceItem, build_intelligence_engine
 from instabotai.providers import build_instagram_provider
 from instabotai.research import AdaptiveResearchService, Crawl4AIFetcher, ResearchAccessPolicy
 from instabotai.settings import get_settings
@@ -23,11 +25,43 @@ async def _close_provider(provider: Any) -> None:
         await closer()
 
 
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(f"could not read JSON from {path}: {exc}") from exc
+
+
+def _load_evidence(path: Path) -> list[EvidenceItem]:
+    raw = _read_json(path)
+    if not isinstance(raw, list):
+        raise typer.BadParameter("evidence file must contain a JSON array")
+    try:
+        return [EvidenceItem.model_validate(item) for item in raw]
+    except Exception as exc:
+        raise typer.BadParameter(f"invalid evidence file: {exc}") from exc
+
+
+def _load_context(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    raw = _read_json(path)
+    if not isinstance(raw, dict):
+        raise typer.BadParameter("context file must contain a JSON object")
+    return raw
+
+
 @app.command("doctor")
 def doctor() -> None:
     settings = get_settings()
     checks = {
         "environment": settings.environment,
+        "ai_provider": settings.ai_provider,
+        "ai_model": settings.ai_model,
+        "ai_base_url": settings.ai_base_url,
+        "ai_api_key_configured": settings.ai_api_key is not None,
+        "ai_critic_enabled": settings.ai_enable_critic,
+        "ai_min_decision_score": settings.ai_min_decision_score,
         "instagram_provider": settings.instagram_provider,
         "graph_api_version": settings.meta_graph_api_version,
         "instagram_account_configured": bool(settings.instagram_account_id),
@@ -67,6 +101,51 @@ def research(
         )
         report = await service.research(objective, seed)
         console.print_json(report.model_dump_json())
+
+    asyncio.run(run())
+
+
+@app.command("plan")
+def plan(
+    objective: Annotated[str, typer.Argument(help="Business objective for the AI decision.")],
+    evidence_file: Annotated[
+        Path,
+        typer.Option(
+            "--evidence-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="JSON array of typed evidence records.",
+        ),
+    ],
+    context_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--context-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Optional JSON object with additional bounded context.",
+        ),
+    ] = None,
+) -> None:
+    """Ask the configured AI system for a reviewed, non-executing Instagram plan."""
+
+    async def run() -> None:
+        engine = build_intelligence_engine(get_settings())
+        try:
+            decision, action = await engine.plan_instagram_action(
+                objective=objective,
+                evidence=_load_evidence(evidence_file),
+                context=_load_context(context_file),
+            )
+            result = {
+                "decision": decision.model_dump(mode="json"),
+                "planned_action": action.model_dump(mode="json") if action is not None else None,
+            }
+            console.print_json(json.dumps(result, default=str))
+        finally:
+            await engine.aclose()
 
     asyncio.run(run())
 
