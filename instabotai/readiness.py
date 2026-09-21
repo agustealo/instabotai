@@ -258,20 +258,20 @@ class ConsumerTrialReadinessService:
                 ),
             )
 
-        missing: list[str] = []
+        private_missing: list[str] = []
         if not username:
-            missing.append("private username")
+            private_missing.append("private username")
         if not (password or "").strip():
-            missing.append("private password")
+            private_missing.append("private password")
         if not package_installed:
-            missing.append("the [private] package extra")
-        if missing:
+            private_missing.append("the [private] package extra")
+        if private_missing:
             return ReadinessCheck(
                 key="instagram_configuration",
                 label="Instagram provider configuration",
                 status="fail",
                 detail="Private provider setup is incomplete.",
-                remediation=f"Configure/install {', '.join(missing)}.",
+                remediation=f"Configure/install {', '.join(private_missing)}.",
             )
         return ReadinessCheck(
             key="instagram_configuration",
