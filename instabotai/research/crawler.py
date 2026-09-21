@@ -108,8 +108,9 @@ class Crawl4AIFetcher:
     @staticmethod
     def _extract_links(base_url: str, raw_links: Any) -> tuple[str, ...]:
         links: list[str] = []
+        groups: list[Any]
         if isinstance(raw_links, dict):
-            groups = raw_links.values()
+            groups = list(raw_links.values())
         elif isinstance(raw_links, list):
             groups = [raw_links]
         else:
