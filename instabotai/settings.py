@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Environment-backed runtime settings.
-
-    Secrets are never accepted from browser sessions or checked into the repository.
-    """
+    """Environment-backed runtime settings."""
 
     model_config = SettingsConfigDict(
         env_prefix="INSTABOTAI_",
@@ -25,10 +23,18 @@ class Settings(BaseSettings):
     environment: str = "development"
     state_db_path: str = "data/instabotai.sqlite3"
 
+    instagram_provider: Literal["official", "private"] = "official"
+
     meta_graph_api_version: str = "v26.0"
     instagram_access_token: SecretStr | None = None
     instagram_account_id: str | None = None
     meta_graph_base_url: str = "https://graph.instagram.com"
+
+    private_instagram_username: str | None = None
+    private_instagram_password: SecretStr | None = None
+    private_session_path: str = "data/private-instagram-session.json"
+    private_proxy_url: SecretStr | None = None
+    private_image_max_bytes: int = Field(default=15_000_000, ge=100_000, le=50_000_000)
 
     research_user_agent: str = (
         "InstabotAI/2.0 (+https://github.com/agustealo/instabotai; compliant-public-web-research)"

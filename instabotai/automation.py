@@ -13,7 +13,13 @@ class InstagramWriter(Protocol):
     async def publish_image(self, image_url: str, caption: str = "") -> str:
         """Publish a single image and return the Instagram media id."""
 
-    async def reply_to_comment(self, comment_id: str, message: str) -> str:
+    async def reply_to_comment(
+        self,
+        comment_id: str,
+        message: str,
+        *,
+        media_id: str | None = None,
+    ) -> str:
         """Reply to a comment and return the reply id."""
 
     async def hide_comment(self, comment_id: str, *, hide: bool = True) -> bool:
@@ -24,7 +30,7 @@ class AutomationService:
     """Only supported write path for the modern runtime.
 
     Every action is checked against policy, reserved durably by idempotency
-    key, executed through the official provider, and recorded as succeeded
+    key, executed through the selected provider, and recorded as succeeded
     or failed.
     """
 
@@ -61,7 +67,12 @@ class AutomationService:
         if action.action_type is ActionType.REPLY_TO_COMMENT:
             target_id = self._required_target(action)
             message = self._required_text(action, "message")
-            return await self._provider.reply_to_comment(target_id, message)
+            media_id = self._optional_text(action, "media_id") or None
+            return await self._provider.reply_to_comment(
+                target_id,
+                message,
+                media_id=media_id,
+            )
 
         if action.action_type is ActionType.HIDE_COMMENT:
             target_id = self._required_target(action)
