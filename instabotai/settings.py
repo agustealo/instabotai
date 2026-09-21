@@ -24,10 +24,10 @@ class Settings(BaseSettings):
 
     environment: str = "development"
 
-    meta_graph_api_version: str | None = None
+    meta_graph_api_version: str = "v26.0"
     instagram_access_token: SecretStr | None = None
     instagram_account_id: str | None = None
-    meta_graph_base_url: str = "https://graph.facebook.com"
+    meta_graph_base_url: str = "https://graph.instagram.com"
 
     research_user_agent: str = (
         "InstabotAI/2.0 (+https://github.com/agustealo/instabotai; compliant-public-web-research)"
@@ -40,11 +40,13 @@ class Settings(BaseSettings):
     )
     research_allowed_domains: tuple[str, ...] = ()
     research_confidence_threshold: float = Field(default=0.80, ge=0.50, le=0.99)
+    research_min_pages: int = Field(default=2, ge=1, le=20)
     research_max_pages: int = Field(default=20, ge=1, le=100)
     research_top_k_links: int = Field(default=4, ge=1, le=20)
     research_min_gain_threshold: float = Field(default=0.08, ge=0.0, le=1.0)
 
     require_write_approval: bool = True
+    write_confidence_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     daily_publish_limit: int = Field(default=4, ge=0, le=50)
     daily_comment_reply_limit: int = Field(default=40, ge=0, le=500)
     daily_comment_moderation_limit: int = Field(default=100, ge=0, le=1000)
@@ -54,9 +56,7 @@ class Settings(BaseSettings):
 
     @field_validator("meta_graph_api_version")
     @classmethod
-    def validate_graph_version(cls, value: str | None) -> str | None:
-        if value is None:
-            return value
+    def validate_graph_version(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized.startswith("v"):
             raise ValueError("meta_graph_api_version must look like vXX.X")
