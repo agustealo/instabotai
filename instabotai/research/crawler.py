@@ -43,9 +43,7 @@ class ResearchAccessPolicy:
             return False
         if self._matches(host, self._blocked):
             return False
-        if self._allowed and not self._matches(host, self._allowed):
-            return False
-        return True
+        return not self._allowed or self._matches(host, self._allowed)
 
     @staticmethod
     def _matches(host: str, domains: tuple[str, ...]) -> bool:
