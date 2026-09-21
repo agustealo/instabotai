@@ -60,7 +60,11 @@ def research(
 ) -> None:
     async def run() -> None:
         settings = get_settings()
-        service = AdaptiveResearchService(settings, Crawl4AIFetcher(settings), ResearchAccessPolicy(settings))
+        service = AdaptiveResearchService(
+            settings,
+            Crawl4AIFetcher(settings),
+            ResearchAccessPolicy(settings),
+        )
         report = await service.research(objective, seed)
         console.print_json(report.model_dump_json())
 
