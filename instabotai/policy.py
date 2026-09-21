@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import assert_never
 
 from instabotai.domain import ActionType, ApprovalState, PlannedAction, UsageSnapshot
 from instabotai.settings import Settings
@@ -64,7 +65,7 @@ class AutomationPolicy:
             return self._settings.daily_comment_reply_limit
         if action_type is ActionType.HIDE_COMMENT:
             return self._settings.daily_comment_moderation_limit
-        raise PolicyViolation(f"unsupported action: {action_type}")
+        assert_never(action_type)
 
     def _check_limit(self, action_type: ActionType, usage: UsageSnapshot) -> PolicyDecision:
         if action_type is ActionType.PUBLISH_IMAGE:
@@ -86,4 +87,4 @@ class AutomationPolicy:
                 "daily comment moderation limit reached" if not allowed else "allowed",
             )
 
-        return PolicyDecision(False, f"unsupported action: {action_type}")
+        assert_never(action_type)
