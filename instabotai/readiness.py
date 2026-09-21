@@ -93,14 +93,20 @@ class ConsumerTrialReadinessService:
                         label="Live AI probe",
                         status="skip",
                         required=False,
-                        detail="Not requested. Run trial-readiness --live for a real model round trip.",
+                        detail=(
+                            "Not requested. Run trial-readiness --live for a real model "
+                            "round trip."
+                        ),
                     ),
                     ReadinessCheck(
                         key="instagram_live",
                         label="Live Instagram read",
                         status="skip",
                         required=False,
-                        detail="Not requested. Run trial-readiness --live for a read-only profile probe.",
+                        detail=(
+                            "Not requested. Run trial-readiness --live for a read-only "
+                            "profile probe."
+                        ),
                     ),
                 )
             )
@@ -145,7 +151,9 @@ class ConsumerTrialReadinessService:
                         label="Durable state",
                         status="fail",
                         detail="SQLite integrity check did not return ok.",
-                        remediation="Repair or replace the configured state database before a trial.",
+                        remediation=(
+                            "Repair or replace the configured state database before a trial."
+                        ),
                     )
                 connection.execute("BEGIN IMMEDIATE")
                 connection.execute(
