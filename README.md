@@ -1,6 +1,6 @@
 # InstabotAI
 
-InstabotAI is being rebuilt as an adaptive AI decision and Instagram automation runtime with real model inference, evidence-grounded planning, independent critique, durable outcome learning, interchangeable account providers, policy-governed writes, durable execution state, and optional Crawl4AI-powered public-web research.
+InstabotAI is being rebuilt as an adaptive AI decision and Instagram automation runtime with real model inference, evidence-grounded planning, independent critique, durable decision audit, outcome learning, interchangeable account providers, policy-governed writes, durable execution state, and optional Crawl4AI-powered public-web research.
 
 The 2.0 line does **not** carry forward the old mass-engagement Flask bot architecture. The modern runtime is Python 3.12+, typed, test-gated, provider-oriented, and designed so account access, research, AI reasoning, policy, memory, scheduling, and execution remain separate systems.
 
@@ -44,6 +44,11 @@ Public-web sources                    Account/product context
                     +---------+---------+
                               v
                     +-------------------+
+                    | DecisionJournal   |
+                    | stable decision ID|
+                    +---------+---------+
+                              v
+                    +-------------------+
                     | abstain OR        |
                     | pending action    |
                     +---------+---------+
@@ -77,7 +82,11 @@ The AI layer performs actual language-model inference rather than routing to har
 
 Model output is never execution authority. The intelligence engine applies a second critic pass, validates responses against typed schemas, rejects actions outside the caller-supplied vocabulary, scores evidence support and risk deterministically, incorporates bounded historical outcomes, and abstains when the final reviewed score does not meet the configured threshold.
 
-Real observed outcomes are stored in `ExperienceStore` and influence later scoring only when they are relevant to the current objective. History cannot replace current evidence or bypass policy.
+Context, evidence, and candidate payloads are explicitly treated as untrusted data rather than instructions. That model-layer prompt-injection defense is followed by typed validation, allowed-action containment, evidence-reference scoring, independent critique, deterministic acceptance thresholds, and downstream policy enforcement.
+
+Every production reasoning result, including abstentions, receives a stable `decision_id` and is persisted in `DecisionJournal`. The journal records the selected action, reviewed score, model/provider identity, critique, uncertainty, explanation, and timestamp. It never stores provider credentials.
+
+Real observed outcomes are stored separately in `ExperienceStore` and influence later scoring only when they are relevant to the current objective. History cannot replace current evidence or bypass policy.
 
 An AI-selected Instagram candidate is converted to a `PlannedAction` with `ApprovalState.PENDING`. The model cannot approve its own write, disable daily limits, bypass idempotency, or call around `AutomationService`.
 
@@ -130,13 +139,19 @@ Extras can be combined, for example `.[private,research,dev]`.
 
 ## Quick start
 
-Validate the active configuration without performing an Instagram write:
+Validate configuration without contacting a model or Instagram:
 
 ```bash
 instabotai doctor
 ```
 
-Read the connected profile:
+Prove that the configured AI model is genuinely reachable and can return validated structured output:
+
+```bash
+instabotai ai-check
+```
+
+Read the connected Instagram profile:
 
 ```bash
 instabotai profile
@@ -156,7 +171,13 @@ instabotai plan "Publish the approved product announcement" \
   --evidence-file ./evidence.json
 ```
 
-The evidence file is a JSON array of typed evidence records containing `evidence_id`, `source`, `content`, optional `confidence`, and optional `observed_at`. An optional `--context-file` accepts a bounded JSON object with additional campaign/account context. The command returns the auditable intelligence decision and a pending action only when the reviewed score passes the configured threshold.
+Inspect recent durable AI decisions and abstentions:
+
+```bash
+instabotai decisions --limit 25
+```
+
+The evidence file is a JSON array of typed evidence records containing `evidence_id`, `source`, `content`, optional `confidence`, and optional `observed_at`. An optional `--context-file` accepts a bounded JSON object with additional campaign/account context. The planning command returns the auditable intelligence decision and a pending action only when the reviewed score passes the configured threshold.
 
 ## Configuration
 
@@ -181,7 +202,7 @@ export INSTABOTAI_AI_BASE_URL='https://your-model-server.example'
 export INSTABOTAI_AI_API_KEY='...'
 ```
 
-The AI runtime also exposes explicit controls for model timeout, temperature, retries, context size, critic enablement, and the minimum final decision score. `instabotai doctor` reports configuration state without printing the API key.
+The AI runtime also exposes explicit controls for model timeout, temperature, retries, context size, critic enablement, and the minimum final decision score. `instabotai doctor` reports configuration state without printing the API key. `instabotai ai-check` is the stronger live connectivity and structured-inference proof.
 
 ### Official provider
 
@@ -234,11 +255,15 @@ docker build -t instabotai-ci .
 docker run --rm instabotai-ci doctor
 ```
 
+The tests exercise planner/critic behavior, fail-closed invalid output, outcome learning, durable decision journaling, allowed-action containment, actual Ollama and OpenAI-compatible HTTP request contracts, provider failure propagation, policy boundaries, durable action state, and the Instagram provider adapters.
+
 Mypy runs in strict mode. The revival intentionally avoids parallel legacy compatibility logic, production mocks, and silent AI fallbacks. If model reasoning is unavailable or invalid, the intelligence engine abstains.
 
 ## Project direction
 
 The next product layer is the durable campaign/workflow scheduler. It will gather live campaign state, research signals, provider observations, policy usage, and previous outcomes and pass that evidence into the single `IntelligenceEngine`. It will not implement a second reasoning stack.
+
+The scheduler will propagate the originating `decision_id` into scheduled work and execution audit metadata so outcomes remain traceable to the exact reasoning record that produced them.
 
 The same objective/evidence/candidate/critique/outcome contracts are intentionally domain-neutral so later product surfaces can reuse the intelligence substrate beyond the initial Instagram workflow without duplicating model orchestration.
 
