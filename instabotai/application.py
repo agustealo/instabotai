@@ -15,6 +15,7 @@ from instabotai.campaigns import (
     WorkerTick,
 )
 from instabotai.domain import ActionType, PlannedAction, ResearchReport
+from instabotai.evidence import TrialEvidenceBundle, TrialEvidenceService
 from instabotai.intelligence import (
     DecisionJournal,
     EvidenceItem,
@@ -360,6 +361,21 @@ class InstabotApplication:
             return runtime.record_outcome(job_id, reward=reward, note=note)
         finally:
             runtime.close()
+
+    async def trial_evidence(
+        self,
+        job_id: str,
+        *,
+        live: bool = False,
+        require_research: bool = False,
+    ) -> TrialEvidenceBundle:
+        """Build a read-only, secret-free evidence snapshot for one durable trial job."""
+
+        return await TrialEvidenceService(self.settings).build(
+            job_id,
+            live=live,
+            require_research=require_research,
+        )
 
     async def worker_tick(self) -> WorkerTick:
         runtime = CampaignRuntime(self.settings)
