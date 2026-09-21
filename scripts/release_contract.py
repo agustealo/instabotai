@@ -123,7 +123,7 @@ def validate_wheel(path: Path, project: ProjectMetadata) -> None:
 
 
 def validate_sdist(path: Path, project: ProjectMetadata) -> None:
-    """Validate source-distribution filename and embedded PKG-INFO."""
+    """Validate source-distribution filename, payload, and embedded PKG-INFO."""
 
     distribution = normalized_distribution_name(project.name).replace("_", "-")
     expected_filename = f"{distribution}-{project.version}.tar.gz"
@@ -132,9 +132,17 @@ def validate_sdist(path: Path, project: ProjectMetadata) -> None:
             f"unexpected sdist filename {path.name!r}; expected {expected_filename!r}"
         )
     with tarfile.open(path, mode="r:gz") as archive:
+        members = archive.getmembers()
+        test_prefix = f"{distribution}-{project.version}/tests/"
+        test_members = [member.name for member in members if member.name.startswith(test_prefix)]
+        if test_members:
+            raise ReleaseContractError(
+                "sdist must not contain the repository test suite; "
+                f"found {len(test_members)} test payload entries"
+            )
         metadata_members = [
             member
-            for member in archive.getmembers()
+            for member in members
             if member.isfile() and member.name.count("/") == 1 and member.name.endswith("/PKG-INFO")
         ]
         if len(metadata_members) != 1:
