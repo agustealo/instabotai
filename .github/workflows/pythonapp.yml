@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - "revival/**"
+      - "consumer-trial/**"
   pull_request:
 
 permissions:
@@ -47,10 +48,27 @@ jobs:
           instabotai doctor
           python -c "from instabotai.web import create_app; assert create_app().title == 'InstabotAI Consumer Console'"
 
+      - name: Wheel install and readiness smoke
+        run: |
+          rm -rf dist /tmp/instabotai-wheel-smoke
+          python -m pip wheel . --no-deps --wheel-dir dist
+          python -m venv /tmp/instabotai-wheel-smoke
+          /tmp/instabotai-wheel-smoke/bin/python -m pip install --upgrade pip
+          /tmp/instabotai-wheel-smoke/bin/python -m pip install dist/instabotai-*.whl
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/state.sqlite3 \
+          INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
+          INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
+            /tmp/instabotai-wheel-smoke/bin/instabotai trial-readiness
+
       - name: Container smoke
         run: |
           docker build -t instabotai-ci .
           docker run --rm instabotai-ci doctor
+          docker run --rm \
+            -e INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-state.sqlite3 \
+            -e INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
+            -e INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
+            instabotai-ci trial-readiness
 
           container_id=$(docker run -d \
             -p 127.0.0.1:8765:8765 \

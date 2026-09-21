@@ -27,6 +27,7 @@ from instabotai.domain import ResearchReport
 from instabotai.intelligence import EvidenceItem, IntelligenceDecision, IntelligenceProbe
 from instabotai.intelligence.providers import IntelligenceProviderError
 from instabotai.providers.instagram import InstagramProviderError
+from instabotai.readiness import ConsumerTrialReadiness, ConsumerTrialReadinessService
 from instabotai.settings import Settings, get_settings
 
 LOGGER = logging.getLogger(__name__)
@@ -123,6 +124,11 @@ def create_app(
 ) -> FastAPI:
     active_settings = settings or get_settings()
     application_service = service or InstabotApplication(active_settings)
+    readiness_service = ConsumerTrialReadinessService(
+        active_settings,
+        ai_probe=application_service.ai_check,
+        profile_probe=application_service.profile,
+    )
     app = FastAPI(
         title="InstabotAI Consumer Console",
         version=__version__,
@@ -135,6 +141,7 @@ def create_app(
     app.state.ai_slots = asyncio.Semaphore(active_settings.ui_ai_max_concurrency)
     app.state.research_slots = asyncio.Semaphore(active_settings.ui_research_max_concurrency)
     app.state.campaign_slots = asyncio.Semaphore(active_settings.ui_campaign_max_concurrency)
+    app.state.readiness_slots = asyncio.Semaphore(1)
 
     app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
@@ -210,6 +217,27 @@ def create_app(
     @app.get("/api/runtime", response_model=RuntimeSnapshot)
     async def runtime() -> RuntimeSnapshot:
         return application_service.runtime_snapshot()
+
+    @app.get("/api/readiness", response_model=ConsumerTrialReadiness)
+    async def readiness(
+        require_research: bool = Query(default=False),
+    ) -> ConsumerTrialReadiness:
+        async with app.state.readiness_slots:
+            return await readiness_service.evaluate(
+                live=False,
+                require_research=require_research,
+            )
+
+    @app.post("/api/readiness/probe", response_model=ConsumerTrialReadiness)
+    async def readiness_probe(
+        request: Request,
+        require_research: bool = Query(default=False),
+    ) -> ConsumerTrialReadiness:
+        async with request.app.state.readiness_slots:
+            return await readiness_service.evaluate(
+                live=True,
+                require_research=require_research,
+            )
 
     @app.post("/api/ai/probe", response_model=IntelligenceProbe)
     async def ai_probe(request: Request) -> IntelligenceProbe:
