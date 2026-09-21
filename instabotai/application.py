@@ -148,6 +148,29 @@ class InstabotApplication:
             supported_actions=tuple(action.value for action in ActionType),
         )
 
+    def doctor_payload(self) -> dict[str, Any]:
+        """Return the stable flat CLI diagnostic payload without exposing secrets."""
+
+        snapshot = self.runtime_snapshot()
+        return {
+            "environment": snapshot.environment,
+            "ai_provider": snapshot.ai.provider,
+            "ai_model": snapshot.ai.model,
+            "ai_base_url": snapshot.ai.base_url,
+            "ai_api_key_configured": snapshot.ai.api_key_configured,
+            "ai_critic_enabled": snapshot.ai.critic_enabled,
+            "ai_min_decision_score": snapshot.ai.min_decision_score,
+            "instagram_provider": snapshot.instagram.provider,
+            "graph_api_version": snapshot.instagram.graph_api_version,
+            "instagram_account_configured": snapshot.instagram.account_configured,
+            "instagram_token_configured": snapshot.instagram.token_configured,
+            "private_username_configured": snapshot.instagram.private_username_configured,
+            "private_password_configured": snapshot.instagram.private_password_configured,
+            "write_approval_required": snapshot.policy.write_approval_required,
+            "research_max_pages": snapshot.research.max_pages,
+            "state_db_path": snapshot.state_db_path,
+        }
+
     async def ai_check(self) -> IntelligenceProbe:
         model = build_reasoning_model(self.settings)
         try:

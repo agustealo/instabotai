@@ -56,7 +56,7 @@ def _service() -> InstabotApplication:
 def doctor() -> None:
     """Report secret-free runtime configuration without external calls."""
 
-    console.print_json(_service().runtime_snapshot().model_dump_json())
+    console.print_json(json.dumps(_service().doctor_payload()))
 
 
 @app.command("ai-check")
