@@ -68,6 +68,16 @@ class ModelReply(BaseModel):
     latency_ms: int = Field(ge=0)
 
 
+class IntelligenceProbe(BaseModel):
+    """Validated result of a live round trip to the configured reasoning model."""
+
+    ok: bool
+    capability: str = Field(min_length=1, max_length=120)
+    provider: str
+    model: str
+    latency_ms: int = Field(ge=0)
+
+
 class IntelligenceDecision(BaseModel):
     """Auditable result of model generation plus deterministic adjudication."""
 
