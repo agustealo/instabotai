@@ -86,6 +86,15 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
     provider_max_retries: int = Field(default=3, ge=0, le=8)
 
+    # Consumer console is local-only by default. Remote binds require a deliberate
+    # opt-in because the surface can expose operational account/model metadata.
+    ui_host: str = "127.0.0.1"
+    ui_port: int = Field(default=8765, ge=1024, le=65535)
+    ui_open_browser: bool = True
+    ui_allow_remote: bool = False
+    ui_ai_max_concurrency: int = Field(default=2, ge=1, le=16)
+    ui_research_max_concurrency: int = Field(default=1, ge=1, le=8)
+
     @field_validator("meta_graph_api_version")
     @classmethod
     def validate_graph_version(cls, value: str) -> str:
@@ -107,12 +116,12 @@ class Settings(BaseSettings):
                 normalized.append(domain)
         return tuple(dict.fromkeys(normalized))
 
-    @field_validator("ai_model", "ai_base_url")
+    @field_validator("ai_model", "ai_base_url", "ui_host")
     @classmethod
-    def validate_ai_text(cls, value: str) -> str:
+    def validate_required_text(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("AI model and base URL values must not be empty")
+            raise ValueError("required runtime text values must not be empty")
         return normalized
 
 

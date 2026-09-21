@@ -4,31 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+import webbrowser
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
+import uvicorn
 from rich.console import Console
 
-from instabotai.intelligence import (
-    DecisionJournal,
-    EvidenceItem,
-    build_intelligence_engine,
-    build_reasoning_model,
-    probe_reasoning_model,
-)
-from instabotai.providers import build_instagram_provider
-from instabotai.research import AdaptiveResearchService, Crawl4AIFetcher, ResearchAccessPolicy
+from instabotai.application import InstabotApplication
+from instabotai.intelligence import EvidenceItem
 from instabotai.settings import get_settings
+from instabotai.web import create_app, validate_ui_bind
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
-
-
-async def _close_provider(provider: Any) -> None:
-    closer = getattr(provider, "aclose", None)
-    if closer is not None:
-        await closer()
 
 
 def _read_json(path: Path) -> Any:
@@ -57,28 +48,15 @@ def _load_context(path: Path | None) -> dict[str, Any]:
     return raw
 
 
+def _service() -> InstabotApplication:
+    return InstabotApplication(get_settings())
+
+
 @app.command("doctor")
 def doctor() -> None:
-    settings = get_settings()
-    checks = {
-        "environment": settings.environment,
-        "ai_provider": settings.ai_provider,
-        "ai_model": settings.ai_model,
-        "ai_base_url": settings.ai_base_url,
-        "ai_api_key_configured": settings.ai_api_key is not None,
-        "ai_critic_enabled": settings.ai_enable_critic,
-        "ai_min_decision_score": settings.ai_min_decision_score,
-        "instagram_provider": settings.instagram_provider,
-        "graph_api_version": settings.meta_graph_api_version,
-        "instagram_account_configured": bool(settings.instagram_account_id),
-        "instagram_token_configured": settings.instagram_access_token is not None,
-        "private_username_configured": bool(settings.private_instagram_username),
-        "private_password_configured": settings.private_instagram_password is not None,
-        "write_approval_required": settings.require_write_approval,
-        "research_max_pages": settings.research_max_pages,
-        "state_db_path": settings.state_db_path,
-    }
-    console.print_json(json.dumps(checks))
+    """Report secret-free runtime configuration without external calls."""
+
+    console.print_json(_service().runtime_snapshot().model_dump_json())
 
 
 @app.command("ai-check")
@@ -86,12 +64,7 @@ def ai_check() -> None:
     """Perform a genuine structured inference round trip to the configured AI model."""
 
     async def run() -> None:
-        model = build_reasoning_model(get_settings())
-        try:
-            probe = await probe_reasoning_model(model)
-            console.print_json(probe.model_dump_json())
-        finally:
-            await _close_provider(model)
+        console.print_json((await _service().ai_check()).model_dump_json())
 
     asyncio.run(run())
 
@@ -105,22 +78,16 @@ def decisions(
 ) -> None:
     """Display the newest durable AI decisions and abstentions."""
 
-    journal = DecisionJournal(get_settings().state_db_path)
-    try:
-        rows = [decision.model_dump(mode="json") for decision in journal.recent(limit)]
-        console.print_json(json.dumps(rows, default=str))
-    finally:
-        journal.close()
+    rows = [decision.model_dump(mode="json") for decision in _service().recent_decisions(limit)]
+    console.print_json(json.dumps(rows, default=str))
 
 
 @app.command("profile")
 def profile() -> None:
+    """Read the currently configured Instagram account profile."""
+
     async def run() -> None:
-        provider = build_instagram_provider(get_settings())
-        try:
-            console.print_json(json.dumps(await provider.get_profile(), default=str))
-        finally:
-            await _close_provider(provider)
+        console.print_json(json.dumps(await _service().profile(), default=str))
 
     asyncio.run(run())
 
@@ -130,14 +97,10 @@ def research(
     objective: Annotated[str, typer.Argument(help="Research objective.")],
     seed: Annotated[list[str], typer.Option("--seed", help="Public-web seed URL.")],
 ) -> None:
+    """Run bounded adaptive public-web research."""
+
     async def run() -> None:
-        settings = get_settings()
-        service = AdaptiveResearchService(
-            settings,
-            Crawl4AIFetcher(settings),
-            ResearchAccessPolicy(settings),
-        )
-        report = await service.research(objective, seed)
+        report = await _service().research(objective=objective, seed_urls=seed)
         console.print_json(report.model_dump_json())
 
     asyncio.run(run())
@@ -170,22 +133,51 @@ def plan(
     """Ask the configured AI system for a reviewed, non-executing Instagram plan."""
 
     async def run() -> None:
-        engine = build_intelligence_engine(get_settings())
-        try:
-            decision, action = await engine.plan_instagram_action(
-                objective=objective,
-                evidence=_load_evidence(evidence_file),
-                context=_load_context(context_file),
-            )
-            result = {
-                "decision": decision.model_dump(mode="json"),
-                "planned_action": action.model_dump(mode="json") if action is not None else None,
-            }
-            console.print_json(json.dumps(result, default=str))
-        finally:
-            await engine.aclose()
+        result = await _service().plan(
+            objective=objective,
+            evidence=_load_evidence(evidence_file),
+            context=_load_context(context_file),
+        )
+        console.print_json(result.model_dump_json())
 
     asyncio.run(run())
+
+
+@app.command("ui")
+def ui(
+    host: Annotated[
+        str | None,
+        typer.Option("--host", help="Bind host. Non-loopback requires explicit configuration."),
+    ] = None,
+    port: Annotated[
+        int | None,
+        typer.Option("--port", min=1024, max=65535, help="Bind TCP port."),
+    ] = None,
+    no_browser: Annotated[
+        bool,
+        typer.Option("--no-browser", help="Do not open the consumer console in a browser."),
+    ] = False,
+) -> None:
+    """Launch the local consumer console."""
+
+    settings = get_settings()
+    bind_host = validate_ui_bind(settings, host or settings.ui_host)
+    bind_port = port or settings.ui_port
+
+    if settings.ui_open_browser and not no_browser:
+        browser_host = "127.0.0.1" if bind_host in {"0.0.0.0", "::"} else bind_host
+        url = f"http://{browser_host}:{bind_port}"
+        timer = threading.Timer(0.8, webbrowser.open, args=(url,))
+        timer.daemon = True
+        timer.start()
+
+    uvicorn.run(
+        create_app(settings=settings),
+        host=bind_host,
+        port=bind_port,
+        log_level="info",
+        access_log=False,
+    )
 
 
 if __name__ == "__main__":
