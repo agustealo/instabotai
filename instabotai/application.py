@@ -27,6 +27,7 @@ from instabotai.intelligence import (
 from instabotai.providers import build_instagram_provider
 from instabotai.research import AdaptiveResearchService, Crawl4AIFetcher, ResearchAccessPolicy
 from instabotai.settings import Settings
+from instabotai.storage import StateSchemaReport, inspect_state_database, upgrade_state_database
 
 
 class AIStatus(BaseModel):
@@ -81,6 +82,8 @@ class SchedulerStatus(BaseModel):
 class RuntimeSnapshot(BaseModel):
     environment: str
     state_db_path: str
+    state_schema_version: int
+    state_schema_target: int
     ai: AIStatus
     instagram: InstagramStatus
     policy: PolicyStatus
@@ -105,12 +108,21 @@ class InstabotApplication:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.state_schema = self._prepare_state_schema(settings.state_db_path)
+
+    @staticmethod
+    def _prepare_state_schema(database_path: str) -> StateSchemaReport:
+        if database_path == ":memory:":
+            return inspect_state_database(database_path)
+        return upgrade_state_database(database_path)
 
     def runtime_snapshot(self) -> RuntimeSnapshot:
         settings = self.settings
         return RuntimeSnapshot(
             environment=settings.environment,
             state_db_path=settings.state_db_path,
+            state_schema_version=self.state_schema.schema_version,
+            state_schema_target=self.state_schema.target_version,
             ai=AIStatus(
                 provider=settings.ai_provider,
                 model=settings.ai_model,
@@ -177,6 +189,9 @@ class InstabotApplication:
             "write_approval_required": snapshot.policy.write_approval_required,
             "research_max_pages": snapshot.research.max_pages,
             "state_db_path": snapshot.state_db_path,
+            "state_schema_version": snapshot.state_schema_version,
+            "state_schema_target": snapshot.state_schema_target,
+            "state_schema_backup_created": self.state_schema.backup_path is not None,
         }
 
     async def ai_check(self) -> IntelligenceProbe:
