@@ -25,23 +25,13 @@ python -m pip install -e '.[dev,research]'
 Before proposing a change, run the same core validation enforced in GitHub Actions:
 
 ```bash
-python -m ruff check \
-  instabotai/__init__.py \
-  instabotai/settings.py \
-  instabotai/domain.py \
-  instabotai/policy.py \
-  instabotai/state.py \
-  instabotai/automation.py \
-  instabotai/providers \
-  instabotai/research \
-  instabotai/cli.py \
-  tests
+python -m ruff check instabotai tests scripts
 python -m mypy instabotai
 python -m pytest
 instabotai doctor
 ```
 
-Do not weaken strict typing, policy checks, or tests to make a change pass.
+Do not weaken strict typing, policy checks, supply-chain pinning, or tests to make a change pass.
 
 ## Architectural rules
 
@@ -55,6 +45,7 @@ Do not weaken strict typing, policy checks, or tests to make a change pass.
 8. **Private-provider compatibility is optional.** Do not make unofficial protocol behavior the application core.
 9. **Do not automate security-checkpoint defeat.** Verification and account challenges remain controlled by Instagram and the account owner.
 10. **Keep the package modular.** Prefer small typed services and explicit interfaces over monolithic scripts or global mutable clients.
+11. **Keep release inputs explicit.** GitHub actions used by repository workflows must be commit-pinned, CI uses the fixed Ubuntu 24.04 runner series, and the production Docker base must stay digest-pinned unless a reviewed upgrade intentionally changes it.
 
 ## Changes to provider behavior
 
