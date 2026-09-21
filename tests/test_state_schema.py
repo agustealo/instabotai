@@ -166,6 +166,39 @@ def test_inspection_is_non_mutating_for_missing_database(tmp_path: Path) -> None
     assert not database.exists()
 
 
+def test_inspection_rejects_current_version_with_missing_columns(tmp_path: Path) -> None:
+    database = tmp_path / "broken-current.sqlite3"
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(
+            """
+            CREATE TABLE instabotai_schema (
+                singleton_id INTEGER PRIMARY KEY,
+                version INTEGER NOT NULL,
+                app_version TEXT NOT NULL,
+                upgraded_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO instabotai_schema VALUES (1, ?, 'current', 'current')",
+            (STATE_SCHEMA_VERSION,),
+        )
+        connection.execute(
+            "CREATE TABLE automation_actions (idempotency_key TEXT PRIMARY KEY)"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    report = inspect_state_database(str(database))
+
+    assert report.schema_version == STATE_SCHEMA_VERSION
+    assert report.migration_required is False
+    assert report.integrity == "schema_invalid"
+    assert report.ready is False
+
+
 def test_upgrade_rejects_database_from_newer_schema(tmp_path: Path) -> None:
     database = tmp_path / "future.sqlite3"
     connection = sqlite3.connect(database)
