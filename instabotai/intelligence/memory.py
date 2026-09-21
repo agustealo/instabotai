@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from instabotai.intelligence.domain import ExperienceSummary
+from instabotai.storage import ensure_state_schema, open_state_connection
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_+-]{1,}", re.IGNORECASE)
 
@@ -107,40 +108,7 @@ class ExperienceStore:
     def _initialize(self) -> None:
         connection = self._connect()
         try:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ai_experiences (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    objective TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    reward REAL NOT NULL CHECK (reward >= 0.0 AND reward <= 1.0),
-                    note TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    source_key TEXT,
-                    observed_at TEXT NOT NULL
-                )
-                """
-            )
-            columns = {
-                str(row["name"])
-                for row in connection.execute("PRAGMA table_info(ai_experiences)").fetchall()
-            }
-            if "source_key" not in columns:
-                connection.execute("ALTER TABLE ai_experiences ADD COLUMN source_key TEXT")
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_ai_experiences_action_time
-                ON ai_experiences (action, observed_at DESC)
-                """
-            )
-            connection.execute(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_experiences_source_key
-                ON ai_experiences (source_key)
-                WHERE source_key IS NOT NULL
-                """
-            )
-            connection.commit()
+            ensure_state_schema(connection, self._database_path)
         finally:
             self._release(connection)
 
@@ -153,11 +121,7 @@ class ExperienceStore:
 
     @staticmethod
     def _new_connection(database_path: str) -> sqlite3.Connection:
-        connection = sqlite3.connect(database_path, timeout=10.0)
-        connection.row_factory = sqlite3.Row
-        if database_path != ":memory:":
-            connection.execute("PRAGMA journal_mode = WAL")
-        return connection
+        return open_state_connection(database_path)
 
     def _release(self, connection: sqlite3.Connection) -> None:
         if self._database_path != ":memory:":

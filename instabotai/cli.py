@@ -18,6 +18,7 @@ from instabotai.campaigns import CampaignMode
 from instabotai.intelligence import EvidenceItem
 from instabotai.readiness import ConsumerTrialReadinessService
 from instabotai.settings import get_settings
+from instabotai.storage import inspect_state_database, upgrade_state_database
 from instabotai.web import create_app, validate_ui_bind
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -61,6 +62,24 @@ def doctor() -> None:
     """Report secret-free runtime configuration without external calls."""
 
     console.print_json(json.dumps(_service().doctor_payload()))
+
+
+@app.command("state-check")
+def state_check() -> None:
+    """Inspect durable SQLite integrity and schema version without migrating it."""
+
+    report = inspect_state_database(get_settings().state_db_path)
+    console.print_json(report.model_dump_json())
+    if not report.ready:
+        raise typer.Exit(code=2)
+
+
+@app.command("state-upgrade")
+def state_upgrade() -> None:
+    """Upgrade durable SQLite state, creating a verified pre-migration backup when needed."""
+
+    report = upgrade_state_database(get_settings().state_db_path)
+    console.print_json(report.model_dump_json())
 
 
 @app.command("trial-readiness")

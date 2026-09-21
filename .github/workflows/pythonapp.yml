@@ -40,6 +40,26 @@ jobs:
       - name: Mypy
         run: python -m mypy instabotai
 
+      - name: Schema migration authority
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          offenders = []
+          for path in sorted(Path("instabotai").rglob("*.py")):
+              if path == Path("instabotai/storage.py"):
+                  continue
+              for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                  if "ALTER TABLE" in line.upper():
+                      offenders.append(f"{path}:{number}: {line.strip()}")
+          if offenders:
+              raise SystemExit(
+                  "Schema migrations must be owned by instabotai/storage.py only:\n"
+                  + "\n".join(offenders)
+              )
+          print("Verified canonical schema migration ownership.")
+          PY
+
       - name: Pytest
         run: python -m pytest
 
@@ -91,24 +111,124 @@ jobs:
           instabotai doctor
           python -c "from instabotai.web import create_app; assert create_app().title == 'InstabotAI Consumer Console'"
 
-      - name: Wheel install and readiness smoke
+      - name: Wheel install and legacy-state upgrade smoke
         run: |
           rm -rf dist /tmp/instabotai-wheel-smoke
           python -m pip wheel . --no-deps --wheel-dir dist
           python -m venv /tmp/instabotai-wheel-smoke
           /tmp/instabotai-wheel-smoke/bin/python -m pip install --upgrade pip
           /tmp/instabotai-wheel-smoke/bin/python -m pip install dist/instabotai-*.whl
-          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/state.sqlite3 \
+
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          database = Path("/tmp/instabotai-wheel-smoke/legacy-state.sqlite3")
+          connection = sqlite3.connect(database)
+          try:
+              connection.execute(
+                  """
+                  CREATE TABLE automation_actions (
+                      idempotency_key TEXT PRIMARY KEY,
+                      action_type TEXT NOT NULL,
+                      target_id TEXT,
+                      status TEXT NOT NULL,
+                      reason TEXT NOT NULL,
+                      confidence REAL NOT NULL,
+                      payload_json TEXT NOT NULL,
+                      created_at TEXT NOT NULL,
+                      executed_at TEXT,
+                      provider_result TEXT,
+                      error TEXT
+                  )
+                  """
+              )
+              connection.execute(
+                  """
+                  INSERT INTO automation_actions (
+                      idempotency_key, action_type, target_id, status, reason,
+                      confidence, payload_json, created_at
+                  ) VALUES (
+                      'wheel-legacy-action', 'reply_to_comment', 'comment-1', 'succeeded',
+                      'legacy wheel upgrade proof', 0.91, '{}', '2026-09-21T12:00:00+00:00'
+                  )
+                  """
+              )
+              connection.commit()
+          finally:
+              connection.close()
+          PY
+
+          set +e
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/legacy-state.sqlite3 \
+            /tmp/instabotai-wheel-smoke/bin/instabotai state-check >/tmp/wheel-state-before.json
+          before_status=$?
+          set -e
+          test "$before_status" -eq 2
+
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/legacy-state.sqlite3 \
+            /tmp/instabotai-wheel-smoke/bin/instabotai state-upgrade
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/legacy-state.sqlite3 \
+            /tmp/instabotai-wheel-smoke/bin/instabotai state-check
+
+          /tmp/instabotai-wheel-smoke/bin/python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          database = "/tmp/instabotai-wheel-smoke/legacy-state.sqlite3"
+          with sqlite3.connect(database) as connection:
+              row = connection.execute(
+                  "SELECT idempotency_key, retryable FROM automation_actions "
+                  "WHERE idempotency_key = 'wheel-legacy-action'"
+              ).fetchone()
+          assert row == ("wheel-legacy-action", 1)
+          backups = list(Path("/tmp/instabotai-wheel-smoke/backups").glob("*.sqlite3"))
+          assert len(backups) == 1, backups
+          PY
+
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/legacy-state.sqlite3 \
           INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
           INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
             /tmp/instabotai-wheel-smoke/bin/instabotai trial-readiness
 
-      - name: Container smoke
+      - name: Container legacy-state upgrade and runtime smoke
         run: |
           docker build -t instabotai-ci .
           docker run --rm instabotai-ci doctor
+
+          rm -rf /tmp/instabotai-container-state
+          mkdir -p /tmp/instabotai-container-state
+          legacy_backup=$(find /tmp/instabotai-wheel-smoke/backups -name '*.sqlite3' -print -quit)
+          test -n "$legacy_backup"
+          cp "$legacy_backup" /tmp/instabotai-container-state/state.sqlite3
+
+          container_uid=$(docker run --rm --entrypoint id instabotai-ci -u)
+          container_gid=$(docker run --rm --entrypoint id instabotai-ci -g)
+          sudo chown -R "$container_uid:$container_gid" /tmp/instabotai-container-state
+
+          set +e
           docker run --rm \
-            -e INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-state.sqlite3 \
+            -v /tmp/instabotai-container-state:/data \
+            -e INSTABOTAI_STATE_DB_PATH=/data/state.sqlite3 \
+            instabotai-ci state-check >/tmp/container-state-before.json
+          before_status=$?
+          set -e
+          test "$before_status" -eq 2
+
+          docker run --rm \
+            -v /tmp/instabotai-container-state:/data \
+            -e INSTABOTAI_STATE_DB_PATH=/data/state.sqlite3 \
+            instabotai-ci state-upgrade
+          test -n "$(find /tmp/instabotai-container-state/backups -name '*.sqlite3' -print -quit)"
+
+          docker run --rm \
+            -v /tmp/instabotai-container-state:/data \
+            -e INSTABOTAI_STATE_DB_PATH=/data/state.sqlite3 \
+            instabotai-ci state-check
+
+          docker run --rm \
+            -v /tmp/instabotai-container-state:/data \
+            -e INSTABOTAI_STATE_DB_PATH=/data/state.sqlite3 \
             -e INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
             -e INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
             instabotai-ci trial-readiness
