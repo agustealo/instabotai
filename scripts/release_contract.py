@@ -103,10 +103,15 @@ def validate_wheel(path: Path, project: ProjectMetadata) -> None:
             f"unexpected wheel filename {path.name!r}; expected {expected_filename!r}"
         )
     with zipfile.ZipFile(path) as archive:
-        metadata_names = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+        metadata_names = [
+            name
+            for name in archive.namelist()
+            if name.endswith(".dist-info/METADATA")
+        ]
         if len(metadata_names) != 1:
             raise ReleaseContractError(
-                f"wheel must contain exactly one .dist-info/METADATA file; found {len(metadata_names)}"
+                "wheel must contain exactly one .dist-info/METADATA file; "
+                f"found {len(metadata_names)}"
             )
         text = archive.read(metadata_names[0]).decode("utf-8")
     name, version = _metadata_fields(text)
@@ -134,7 +139,8 @@ def validate_sdist(path: Path, project: ProjectMetadata) -> None:
         ]
         if len(metadata_members) != 1:
             raise ReleaseContractError(
-                f"sdist must contain exactly one top-level PKG-INFO file; found {len(metadata_members)}"
+                "sdist must contain exactly one top-level PKG-INFO file; "
+                f"found {len(metadata_members)}"
             )
         extracted = archive.extractfile(metadata_members[0])
         if extracted is None:
