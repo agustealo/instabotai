@@ -102,6 +102,11 @@ def inspect_state_database(database_path: str) -> StateSchemaReport:
             )
         tables = _managed_tables(connection)
         integrity = _integrity(connection)
+        if version == STATE_SCHEMA_VERSION and integrity == "ok":
+            try:
+                _verify_current_schema(connection)
+            except StateSchemaError:
+                integrity = "schema_invalid"
         return StateSchemaReport(
             database_path=str(path),
             schema_version=version,
