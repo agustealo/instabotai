@@ -4,7 +4,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from instabotai.campaigns import Campaign, CampaignMode, CampaignStore
+from instabotai.campaigns import Campaign, CampaignMode, CampaignStatus, CampaignStore
 from instabotai.domain import ActionType, PlannedAction
 from instabotai.evidence import (
     TrialEvidenceService,
@@ -38,6 +38,7 @@ def settings(tmp_path: Path) -> Settings:
 
 def seed_trial_state(active: Settings) -> str:
     upgrade_state_database(active.state_db_path)
+    execution_time = datetime.now(UTC)
     evidence = EvidenceItem(
         evidence_id="approved-brief",
         source="operator",
@@ -105,9 +106,14 @@ def seed_trial_state(active: Settings) -> str:
         decision_id=decision.decision_id,
         action=action,
         settings=active,
-        scheduled_for=datetime.now(UTC),
+        scheduled_for=execution_time,
     )
-    approved = store.approve_job(job.job_id)
+    approved = store.approve_job(job.job_id, now=execution_time)
+    store.set_campaign_status(
+        campaign.campaign_id,
+        CampaignStatus.ACTIVE,
+        now=execution_time,
+    )
 
     ledger = ActionLedger(active.state_db_path)
     ledger.reserve(approved.action, daily_limit=active.daily_publish_limit)
@@ -124,6 +130,7 @@ def seed_trial_state(active: Settings) -> str:
     leased, lease_token = store.claim_job(
         approved.job_id,
         lease_seconds=active.campaign_action_lease_seconds,
+        now=execution_time,
     )
     assert leased.job_id == approved.job_id
     store.mark_job_succeeded(
@@ -133,11 +140,13 @@ def seed_trial_state(active: Settings) -> str:
             "media_id": "media-123",
             "api_key": "provider-api-key",
         },
+        now=execution_time,
     )
     store.record_outcome(
         approved.job_id,
         reward=0.82,
         note="Measured conversion lift without storing credentials.",
+        now=execution_time,
     )
     store.close()
     return approved.job_id
