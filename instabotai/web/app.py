@@ -15,6 +15,14 @@ from pydantic import BaseModel, Field
 
 from instabotai import __version__
 from instabotai.application import InstabotApplication, PlanResult, RuntimeSnapshot
+from instabotai.campaigns import (
+    Campaign,
+    CampaignJob,
+    CampaignMode,
+    CampaignNotFoundError,
+    CampaignPlanOutcome,
+    CampaignStateError,
+)
 from instabotai.domain import ResearchReport
 from instabotai.intelligence import EvidenceItem, IntelligenceDecision, IntelligenceProbe
 from instabotai.intelligence.providers import IntelligenceProviderError
@@ -26,51 +34,84 @@ STATIC_DIR = Path(__file__).with_name("static")
 
 
 class ApplicationService(Protocol):
-    """Contract consumed by the HTTP presentation layer."""
-
-    def runtime_snapshot(self) -> RuntimeSnapshot:
-        """Return safe runtime configuration."""
-
-    async def ai_check(self) -> IntelligenceProbe:
-        """Perform one real model probe."""
-
+    def runtime_snapshot(self) -> RuntimeSnapshot: ...
+    async def ai_check(self) -> IntelligenceProbe: ...
     async def plan(
         self,
         *,
         objective: str,
         evidence: list[EvidenceItem],
         context: dict[str, Any] | None = None,
-    ) -> PlanResult:
-        """Create one reviewed, non-executing AI plan."""
-
-    def recent_decisions(self, limit: int = 25) -> tuple[IntelligenceDecision, ...]:
-        """Read recent durable decisions."""
-
-    async def profile(self) -> dict[str, Any]:
-        """Read the connected Instagram profile."""
-
-    async def research(self, *, objective: str, seed_urls: list[str]) -> ResearchReport:
-        """Run adaptive public-web research."""
+    ) -> PlanResult: ...
+    def recent_decisions(self, limit: int = 25) -> tuple[IntelligenceDecision, ...]: ...
+    async def profile(self) -> dict[str, Any]: ...
+    async def research(self, *, objective: str, seed_urls: list[str]) -> ResearchReport: ...
+    def create_campaign(
+        self,
+        *,
+        name: str,
+        objective: str,
+        mode: CampaignMode,
+        cadence_minutes: int,
+        action_delay_minutes: int,
+        evidence: list[EvidenceItem],
+        context: dict[str, Any],
+        research_seed_urls: list[str],
+        research_before_plan: bool,
+    ) -> Campaign: ...
+    def list_campaigns(self, limit: int = 100) -> tuple[Campaign, ...]: ...
+    def activate_campaign(self, campaign_id: str) -> Campaign: ...
+    def pause_campaign(self, campaign_id: str) -> Campaign: ...
+    def archive_campaign(self, campaign_id: str) -> Campaign: ...
+    async def plan_campaign_now(self, campaign_id: str) -> CampaignPlanOutcome: ...
+    def list_campaign_jobs(
+        self,
+        *,
+        campaign_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[CampaignJob, ...]: ...
+    def approve_campaign_job(self, job_id: str) -> CampaignJob: ...
+    def reject_campaign_job(self, job_id: str) -> CampaignJob: ...
+    def cancel_campaign_job(self, job_id: str) -> CampaignJob: ...
+    async def execute_campaign_job(self, job_id: str) -> CampaignJob: ...
+    def record_campaign_outcome(
+        self,
+        job_id: str,
+        *,
+        reward: float,
+        note: str = "",
+    ) -> CampaignJob: ...
 
 
 class PlanRequest(BaseModel):
-    """Browser request for one reviewed AI planning pass."""
-
     objective: str = Field(min_length=3, max_length=2_000)
     evidence: list[EvidenceItem] = Field(min_length=1, max_length=100)
     context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResearchRequest(BaseModel):
-    """Browser request for one bounded adaptive research run."""
-
     objective: str = Field(min_length=3, max_length=2_000)
     seed_urls: list[str] = Field(min_length=1, max_length=20)
 
 
-class APIError(BaseModel):
-    """Stable error envelope used by consumer surfaces."""
+class CampaignCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    objective: str = Field(min_length=3, max_length=2_000)
+    mode: CampaignMode = CampaignMode.SUPERVISED
+    cadence_minutes: int = Field(default=1440, ge=5, le=43_200)
+    action_delay_minutes: int = Field(default=0, ge=0, le=10_080)
+    evidence: list[EvidenceItem] = Field(default_factory=list, max_length=100)
+    context: dict[str, Any] = Field(default_factory=dict)
+    research_seed_urls: list[str] = Field(default_factory=list, max_length=20)
+    research_before_plan: bool = False
 
+
+class OutcomeRequest(BaseModel):
+    reward: float = Field(ge=0.0, le=1.0)
+    note: str = Field(default="", max_length=4_000)
+
+
+class APIError(BaseModel):
     code: str
     message: str
 
@@ -80,8 +121,6 @@ def create_app(
     settings: Settings | None = None,
     service: ApplicationService | None = None,
 ) -> FastAPI:
-    """Create the consumer web application without duplicating domain logic."""
-
     active_settings = settings or get_settings()
     application_service = service or InstabotApplication(active_settings)
     app = FastAPI(
@@ -95,6 +134,7 @@ def create_app(
     app.state.service = application_service
     app.state.ai_slots = asyncio.Semaphore(active_settings.ui_ai_max_concurrency)
     app.state.research_slots = asyncio.Semaphore(active_settings.ui_research_max_concurrency)
+    app.state.campaign_slots = asyncio.Semaphore(active_settings.ui_campaign_max_concurrency)
 
     app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
@@ -121,6 +161,14 @@ def create_app(
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.exception_handler(CampaignNotFoundError)
+    async def campaign_not_found(_: Request, exc: CampaignNotFoundError) -> JSONResponse:
+        return _error_response("campaign_not_found", str(exc), 404)
+
+    @app.exception_handler(CampaignStateError)
+    async def campaign_state_error(_: Request, exc: CampaignStateError) -> JSONResponse:
+        return _error_response("campaign_state_error", str(exc), 409)
 
     @app.exception_handler(IntelligenceProviderError)
     async def intelligence_error(_: Request, exc: IntelligenceProviderError) -> JSONResponse:
@@ -195,12 +243,84 @@ def create_app(
                 seed_urls=payload.seed_urls,
             )
 
+    @app.post("/api/campaigns", response_model=Campaign, status_code=201)
+    async def create_campaign(payload: CampaignCreateRequest) -> Campaign:
+        return application_service.create_campaign(
+            name=payload.name,
+            objective=payload.objective,
+            mode=payload.mode,
+            cadence_minutes=payload.cadence_minutes,
+            action_delay_minutes=payload.action_delay_minutes,
+            evidence=payload.evidence,
+            context=payload.context,
+            research_seed_urls=payload.research_seed_urls,
+            research_before_plan=payload.research_before_plan,
+        )
+
+    @app.get("/api/campaigns", response_model=list[Campaign])
+    async def campaigns(
+        limit: int = Query(default=100, ge=1, le=500),
+    ) -> list[Campaign]:
+        return list(application_service.list_campaigns(limit))
+
+    @app.post("/api/campaigns/{campaign_id}/activate", response_model=Campaign)
+    async def activate_campaign(campaign_id: str) -> Campaign:
+        return application_service.activate_campaign(campaign_id)
+
+    @app.post("/api/campaigns/{campaign_id}/pause", response_model=Campaign)
+    async def pause_campaign(campaign_id: str) -> Campaign:
+        return application_service.pause_campaign(campaign_id)
+
+    @app.post("/api/campaigns/{campaign_id}/archive", response_model=Campaign)
+    async def archive_campaign(campaign_id: str) -> Campaign:
+        return application_service.archive_campaign(campaign_id)
+
+    @app.post("/api/campaigns/{campaign_id}/plan-now", response_model=CampaignPlanOutcome)
+    async def plan_campaign(campaign_id: str, request: Request) -> CampaignPlanOutcome:
+        async with request.app.state.campaign_slots:
+            return await application_service.plan_campaign_now(campaign_id)
+
+    @app.get("/api/campaign-jobs", response_model=list[CampaignJob])
+    async def campaign_jobs(
+        campaign_id: str | None = Query(default=None),
+        limit: int = Query(default=100, ge=1, le=500),
+    ) -> list[CampaignJob]:
+        return list(
+            application_service.list_campaign_jobs(
+                campaign_id=campaign_id,
+                limit=limit,
+            )
+        )
+
+    @app.post("/api/campaign-jobs/{job_id}/approve", response_model=CampaignJob)
+    async def approve_job(job_id: str) -> CampaignJob:
+        return application_service.approve_campaign_job(job_id)
+
+    @app.post("/api/campaign-jobs/{job_id}/reject", response_model=CampaignJob)
+    async def reject_job(job_id: str) -> CampaignJob:
+        return application_service.reject_campaign_job(job_id)
+
+    @app.post("/api/campaign-jobs/{job_id}/cancel", response_model=CampaignJob)
+    async def cancel_job(job_id: str) -> CampaignJob:
+        return application_service.cancel_campaign_job(job_id)
+
+    @app.post("/api/campaign-jobs/{job_id}/execute", response_model=CampaignJob)
+    async def execute_job(job_id: str, request: Request) -> CampaignJob:
+        async with request.app.state.campaign_slots:
+            return await application_service.execute_campaign_job(job_id)
+
+    @app.post("/api/campaign-jobs/{job_id}/outcome", response_model=CampaignJob)
+    async def record_outcome(job_id: str, payload: OutcomeRequest) -> CampaignJob:
+        return application_service.record_campaign_outcome(
+            job_id,
+            reward=payload.reward,
+            note=payload.note,
+        )
+
     return app
 
 
 def validate_ui_bind(settings: Settings, host: str) -> str:
-    """Fail closed when the consumer console would be exposed remotely by accident."""
-
     normalized = host.strip()
     if not normalized:
         raise ValueError("UI host must not be empty")

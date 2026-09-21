@@ -34,22 +34,18 @@ class ExperienceStore:
         reward: float,
         note: str = "",
         metadata: dict[str, Any] | None = None,
+        source_key: str | None = None,
     ) -> None:
-        """Persist one observed result used to shape future decisions."""
+        """Persist one observed result; source_key makes external outcome writes idempotent."""
 
         bounded_reward = max(0.0, min(1.0, reward))
         connection = self._connect()
         try:
             connection.execute(
                 """
-                INSERT INTO ai_experiences (
-                    objective,
-                    action,
-                    reward,
-                    note,
-                    metadata_json,
-                    observed_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO ai_experiences (
+                    objective, action, reward, note, metadata_json, source_key, observed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     objective.strip(),
@@ -57,6 +53,7 @@ class ExperienceStore:
                     bounded_reward,
                     note[:4000],
                     json.dumps(metadata or {}, sort_keys=True, default=str),
+                    source_key,
                     datetime.now(UTC).isoformat(),
                 ),
             )
@@ -119,14 +116,28 @@ class ExperienceStore:
                     reward REAL NOT NULL CHECK (reward >= 0.0 AND reward <= 1.0),
                     note TEXT NOT NULL,
                     metadata_json TEXT NOT NULL,
+                    source_key TEXT,
                     observed_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(ai_experiences)").fetchall()
+            }
+            if "source_key" not in columns:
+                connection.execute("ALTER TABLE ai_experiences ADD COLUMN source_key TEXT")
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_ai_experiences_action_time
                 ON ai_experiences (action, observed_at DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_experiences_source_key
+                ON ai_experiences (source_key)
+                WHERE source_key IS NOT NULL
                 """
             )
             connection.commit()

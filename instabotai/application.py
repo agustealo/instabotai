@@ -6,6 +6,14 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from instabotai.campaigns import (
+    Campaign,
+    CampaignJob,
+    CampaignMode,
+    CampaignPlanOutcome,
+    CampaignRuntime,
+    WorkerTick,
+)
 from instabotai.domain import ActionType, PlannedAction, ResearchReport
 from instabotai.intelligence import (
     DecisionJournal,
@@ -22,8 +30,6 @@ from instabotai.settings import Settings
 
 
 class AIStatus(BaseModel):
-    """Safe-to-display AI runtime status."""
-
     provider: str
     model: str
     base_url: str
@@ -37,8 +43,6 @@ class AIStatus(BaseModel):
 
 
 class InstagramStatus(BaseModel):
-    """Safe-to-display Instagram provider status."""
-
     provider: str
     graph_api_version: str
     account_configured: bool
@@ -49,8 +53,6 @@ class InstagramStatus(BaseModel):
 
 
 class PolicyStatus(BaseModel):
-    """Safe-to-display write-policy status."""
-
     write_approval_required: bool
     write_confidence_threshold: float
     daily_publish_limit: int
@@ -59,8 +61,6 @@ class PolicyStatus(BaseModel):
 
 
 class ResearchStatus(BaseModel):
-    """Safe-to-display adaptive-research status."""
-
     max_pages: int
     min_pages: int
     confidence_threshold: float
@@ -69,21 +69,27 @@ class ResearchStatus(BaseModel):
     allowed_domains: tuple[str, ...]
 
 
-class RuntimeSnapshot(BaseModel):
-    """Complete secret-free runtime snapshot for operator surfaces."""
+class SchedulerStatus(BaseModel):
+    worker_poll_seconds: float
+    plan_lease_seconds: int
+    action_lease_seconds: int
+    action_max_attempts: int
+    action_retry_base_seconds: int
+    action_retry_cap_seconds: int
 
+
+class RuntimeSnapshot(BaseModel):
     environment: str
     state_db_path: str
     ai: AIStatus
     instagram: InstagramStatus
     policy: PolicyStatus
     research: ResearchStatus
+    scheduler: SchedulerStatus
     supported_actions: tuple[str, ...]
 
 
 class PlanResult(BaseModel):
-    """Reviewed AI decision plus its non-executing pending action."""
-
     decision: IntelligenceDecision
     planned_action: PlannedAction | None = None
 
@@ -95,11 +101,7 @@ async def _close_resource(resource: Any) -> None:
 
 
 class InstabotApplication:
-    """Single orchestration surface for CLI and GUI consumers.
-
-    This layer intentionally owns no alternate policy or reasoning logic. It composes
-    the canonical intelligence, provider, research, and durable state authorities.
-    """
+    """Single orchestration surface for CLI, GUI, and worker consumers."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -145,12 +147,18 @@ class InstabotApplication:
                 blocked_domains=settings.research_blocked_domains,
                 allowed_domains=settings.research_allowed_domains,
             ),
+            scheduler=SchedulerStatus(
+                worker_poll_seconds=settings.campaign_worker_poll_seconds,
+                plan_lease_seconds=settings.campaign_plan_lease_seconds,
+                action_lease_seconds=settings.campaign_action_lease_seconds,
+                action_max_attempts=settings.campaign_action_max_attempts,
+                action_retry_base_seconds=settings.campaign_action_retry_base_seconds,
+                action_retry_cap_seconds=settings.campaign_action_retry_cap_seconds,
+            ),
             supported_actions=tuple(action.value for action in ActionType),
         )
 
     def doctor_payload(self) -> dict[str, Any]:
-        """Return the stable flat CLI diagnostic payload without exposing secrets."""
-
         snapshot = self.runtime_snapshot()
         return {
             "environment": snapshot.environment,
@@ -220,3 +228,127 @@ class InstabotApplication:
             ResearchAccessPolicy(self.settings),
         )
         return await service.research(objective, seed_urls)
+
+    def create_campaign(
+        self,
+        *,
+        name: str,
+        objective: str,
+        mode: CampaignMode,
+        cadence_minutes: int,
+        action_delay_minutes: int,
+        evidence: list[EvidenceItem],
+        context: dict[str, Any],
+        research_seed_urls: list[str],
+        research_before_plan: bool,
+    ) -> Campaign:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.create_campaign(
+                name=name,
+                objective=objective,
+                mode=mode,
+                cadence_minutes=cadence_minutes,
+                action_delay_minutes=action_delay_minutes,
+                evidence=evidence,
+                context=context,
+                research_seed_urls=research_seed_urls,
+                research_before_plan=research_before_plan,
+            )
+        finally:
+            runtime.close()
+
+    def list_campaigns(self, limit: int = 100) -> tuple[Campaign, ...]:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.list_campaigns(limit)
+        finally:
+            runtime.close()
+
+    def activate_campaign(self, campaign_id: str) -> Campaign:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.activate_campaign(campaign_id)
+        finally:
+            runtime.close()
+
+    def pause_campaign(self, campaign_id: str) -> Campaign:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.pause_campaign(campaign_id)
+        finally:
+            runtime.close()
+
+    def archive_campaign(self, campaign_id: str) -> Campaign:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.archive_campaign(campaign_id)
+        finally:
+            runtime.close()
+
+    async def plan_campaign_now(self, campaign_id: str) -> CampaignPlanOutcome:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return await runtime.plan_campaign_now(campaign_id)
+        finally:
+            runtime.close()
+
+    def list_campaign_jobs(
+        self,
+        *,
+        campaign_id: str | None = None,
+        limit: int = 100,
+    ) -> tuple[CampaignJob, ...]:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.list_jobs(campaign_id=campaign_id, limit=limit)
+        finally:
+            runtime.close()
+
+    def approve_campaign_job(self, job_id: str) -> CampaignJob:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.approve_job(job_id)
+        finally:
+            runtime.close()
+
+    def reject_campaign_job(self, job_id: str) -> CampaignJob:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.reject_job(job_id)
+        finally:
+            runtime.close()
+
+    def cancel_campaign_job(self, job_id: str) -> CampaignJob:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.cancel_job(job_id)
+        finally:
+            runtime.close()
+
+    async def execute_campaign_job(self, job_id: str) -> CampaignJob:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return await runtime.execute_job(job_id)
+        finally:
+            runtime.close()
+
+    def record_campaign_outcome(
+        self,
+        job_id: str,
+        *,
+        reward: float,
+        note: str = "",
+    ) -> CampaignJob:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.record_outcome(job_id, reward=reward, note=note)
+        finally:
+            runtime.close()
+
+    async def worker_tick(self) -> WorkerTick:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return await runtime.worker_tick()
+        finally:
+            runtime.close()

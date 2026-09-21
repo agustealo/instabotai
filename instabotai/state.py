@@ -32,7 +32,11 @@ class ActionLedger:
         self._initialize()
 
     def reserve(self, action: PlannedAction, *, daily_limit: int) -> None:
-        """Reserve one action atomically against idempotency and daily quota."""
+        """Reserve an action atomically.
+
+        A previously failed reservation may be retried only when the stored immutable action
+        identity still matches exactly. Reserved and succeeded rows remain non-replayable.
+        """
 
         payload = json.dumps(action.payload, sort_keys=True, separators=(",", ":"))
         reserved_at = datetime.now(UTC)
@@ -41,10 +45,15 @@ class ActionLedger:
         try:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT 1 FROM automation_actions WHERE idempotency_key = ?",
+                """
+                SELECT action_type, target_id, status, payload_json
+                FROM automation_actions
+                WHERE idempotency_key = ?
+                """,
                 (action.idempotency_key,),
             ).fetchone()
-            if existing is not None:
+
+            if existing is not None and str(existing["status"]) != "failed":
                 raise DuplicateActionError(
                     f"action already exists for idempotency key {action.idempotency_key!r}"
                 )
@@ -65,29 +74,58 @@ class ActionLedger:
                     f"daily {action.action_type.value} limit reached ({daily_limit})"
                 )
 
-            connection.execute(
-                """
-                INSERT INTO automation_actions (
-                    idempotency_key,
-                    action_type,
-                    target_id,
-                    status,
-                    reason,
-                    confidence,
-                    payload_json,
-                    created_at
-                ) VALUES (?, ?, ?, 'reserved', ?, ?, ?, ?)
-                """,
-                (
-                    action.idempotency_key,
-                    action.action_type.value,
-                    action.target_id,
-                    action.reason,
-                    action.confidence,
-                    payload,
-                    reserved_at.isoformat(),
-                ),
-            )
+            if existing is not None:
+                if (
+                    str(existing["action_type"]) != action.action_type.value
+                    or existing["target_id"] != action.target_id
+                    or str(existing["payload_json"]) != payload
+                ):
+                    raise DuplicateActionError(
+                        "failed idempotency key cannot be reused for a different action"
+                    )
+                connection.execute(
+                    """
+                    UPDATE automation_actions
+                    SET status = 'reserved',
+                        reason = ?,
+                        confidence = ?,
+                        created_at = ?,
+                        executed_at = NULL,
+                        provider_result = NULL,
+                        error = NULL
+                    WHERE idempotency_key = ? AND status = 'failed'
+                    """,
+                    (
+                        action.reason,
+                        action.confidence,
+                        reserved_at.isoformat(),
+                        action.idempotency_key,
+                    ),
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO automation_actions (
+                        idempotency_key,
+                        action_type,
+                        target_id,
+                        status,
+                        reason,
+                        confidence,
+                        payload_json,
+                        created_at
+                    ) VALUES (?, ?, ?, 'reserved', ?, ?, ?, ?)
+                    """,
+                    (
+                        action.idempotency_key,
+                        action.action_type.value,
+                        action.target_id,
+                        action.reason,
+                        action.confidence,
+                        payload,
+                        reserved_at.isoformat(),
+                    ),
+                )
             connection.commit()
         except Exception:
             connection.rollback()
@@ -149,8 +187,6 @@ class ActionLedger:
         return str(row["status"]) if row is not None else None
 
     def close(self) -> None:
-        """Release the persistent in-memory connection, if one is in use."""
-
         if self._memory_connection is not None:
             self._memory_connection.close()
             self._memory_connection = None

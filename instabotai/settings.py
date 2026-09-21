@@ -23,8 +23,6 @@ class Settings(BaseSettings):
     environment: str = "development"
     state_db_path: str = "data/instabotai.sqlite3"
 
-    # Canonical AI runtime. Ollama provides a genuine local-model default while
-    # the OpenAI-compatible adapter supports hosted or self-hosted model servers.
     ai_provider: Literal["ollama", "openai_compatible"] = "ollama"
     ai_model: str = "llama3.2:3b"
     ai_base_url: str = "http://127.0.0.1:11434"
@@ -49,8 +47,6 @@ class Settings(BaseSettings):
     private_proxy_url: SecretStr | None = None
     private_image_max_bytes: int = Field(default=15_000_000, ge=100_000, le=50_000_000)
 
-    # Authorized lab/research controls. These expose supported client knobs and
-    # local operator-supplied state. They do not implement platform-control bypasses.
     private_research_mode: bool = False
     private_credentials_file: str | None = None
     private_device_profile_file: str | None = None
@@ -86,14 +82,24 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
     provider_max_retries: int = Field(default=3, ge=0, le=8)
 
-    # Consumer console is local-only by default. Remote binds require a deliberate
-    # opt-in because the surface can expose operational account/model metadata.
+    # Durable campaign/scheduler worker.
+    campaign_worker_poll_seconds: float = Field(default=5.0, ge=1.0, le=300.0)
+    campaign_plan_lease_seconds: int = Field(default=300, ge=30, le=3600)
+    campaign_plan_retry_base_seconds: int = Field(default=60, ge=5, le=3600)
+    campaign_plan_retry_cap_seconds: int = Field(default=1800, ge=30, le=86_400)
+    campaign_action_lease_seconds: int = Field(default=180, ge=30, le=3600)
+    campaign_action_max_attempts: int = Field(default=3, ge=1, le=20)
+    campaign_action_retry_base_seconds: int = Field(default=30, ge=5, le=3600)
+    campaign_action_retry_cap_seconds: int = Field(default=900, ge=30, le=86_400)
+
+    # Consumer console is local-only by default.
     ui_host: str = "127.0.0.1"
     ui_port: int = Field(default=8765, ge=1024, le=65535)
     ui_open_browser: bool = True
     ui_allow_remote: bool = False
     ui_ai_max_concurrency: int = Field(default=2, ge=1, le=16)
     ui_research_max_concurrency: int = Field(default=1, ge=1, le=8)
+    ui_campaign_max_concurrency: int = Field(default=1, ge=1, le=8)
 
     @field_validator("meta_graph_api_version")
     @classmethod

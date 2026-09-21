@@ -14,6 +14,7 @@ import uvicorn
 from rich.console import Console
 
 from instabotai.application import InstabotApplication
+from instabotai.campaigns import CampaignMode
 from instabotai.intelligence import EvidenceItem
 from instabotai.settings import get_settings
 from instabotai.web import create_app, validate_ui_bind
@@ -29,7 +30,9 @@ def _read_json(path: Path) -> Any:
         raise typer.BadParameter(f"could not read JSON from {path}: {exc}") from exc
 
 
-def _load_evidence(path: Path) -> list[EvidenceItem]:
+def _load_evidence(path: Path | None) -> list[EvidenceItem]:
+    if path is None:
+        return []
     raw = _read_json(path)
     if not isinstance(raw, list):
         raise typer.BadParameter("evidence file must contain a JSON array")
@@ -141,6 +144,182 @@ def plan(
         console.print_json(result.model_dump_json())
 
     asyncio.run(run())
+
+
+@app.command("campaign-create")
+def campaign_create(
+    name: Annotated[str, typer.Argument(help="Campaign name.")],
+    objective: Annotated[str, typer.Argument(help="Business objective.")],
+    evidence_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--evidence-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Optional JSON evidence array.",
+        ),
+    ] = None,
+    context_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--context-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Optional JSON context object.",
+        ),
+    ] = None,
+    seed: Annotated[
+        list[str] | None,
+        typer.Option("--seed", help="Public-web research seed URL."),
+    ] = None,
+    research: Annotated[
+        bool,
+        typer.Option("--research/--no-research", help="Research before each planning cycle."),
+    ] = False,
+    mode: Annotated[
+        CampaignMode,
+        typer.Option("--mode", help="supervised or policy_managed."),
+    ] = CampaignMode.SUPERVISED,
+    cadence_minutes: Annotated[
+        int,
+        typer.Option("--cadence-minutes", min=5, max=43200),
+    ] = 1440,
+    action_delay_minutes: Annotated[
+        int,
+        typer.Option("--action-delay-minutes", min=0, max=10080),
+    ] = 0,
+) -> None:
+    """Create a durable campaign in draft state."""
+
+    campaign = _service().create_campaign(
+        name=name,
+        objective=objective,
+        mode=mode,
+        cadence_minutes=cadence_minutes,
+        action_delay_minutes=action_delay_minutes,
+        evidence=_load_evidence(evidence_file),
+        context=_load_context(context_file),
+        research_seed_urls=seed or [],
+        research_before_plan=research,
+    )
+    console.print_json(campaign.model_dump_json())
+
+
+@app.command("campaigns")
+def campaigns(
+    limit: Annotated[int, typer.Option("--limit", min=1, max=500)] = 100,
+) -> None:
+    """List durable campaigns."""
+
+    rows = [item.model_dump(mode="json") for item in _service().list_campaigns(limit)]
+    console.print_json(json.dumps(rows, default=str))
+
+
+@app.command("campaign-activate")
+def campaign_activate(campaign_id: str) -> None:
+    """Activate a campaign and make it eligible for planning."""
+
+    console.print_json(_service().activate_campaign(campaign_id).model_dump_json())
+
+
+@app.command("campaign-pause")
+def campaign_pause(campaign_id: str) -> None:
+    """Pause future planning and automatic execution for a campaign."""
+
+    console.print_json(_service().pause_campaign(campaign_id).model_dump_json())
+
+
+@app.command("campaign-plan")
+def campaign_plan(campaign_id: str) -> None:
+    """Run one immediate campaign planning cycle."""
+
+    async def run() -> None:
+        result = await _service().plan_campaign_now(campaign_id)
+        console.print_json(result.model_dump_json())
+
+    asyncio.run(run())
+
+
+@app.command("campaign-jobs")
+def campaign_jobs(
+    campaign_id: Annotated[str | None, typer.Option("--campaign-id")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=500)] = 100,
+) -> None:
+    """List campaign action jobs."""
+
+    rows = [
+        job.model_dump(mode="json")
+        for job in _service().list_campaign_jobs(campaign_id=campaign_id, limit=limit)
+    ]
+    console.print_json(json.dumps(rows, default=str))
+
+
+@app.command("campaign-approve")
+def campaign_approve(job_id: str) -> None:
+    """Approve one pending campaign action."""
+
+    console.print_json(_service().approve_campaign_job(job_id).model_dump_json())
+
+
+@app.command("campaign-reject")
+def campaign_reject(job_id: str) -> None:
+    """Reject one pending campaign action."""
+
+    console.print_json(_service().reject_campaign_job(job_id).model_dump_json())
+
+
+@app.command("campaign-execute")
+def campaign_execute(job_id: str) -> None:
+    """Execute one approved/due campaign job through the canonical write service."""
+
+    async def run() -> None:
+        console.print_json((await _service().execute_campaign_job(job_id)).model_dump_json())
+
+    asyncio.run(run())
+
+
+@app.command("campaign-outcome")
+def campaign_outcome(
+    job_id: str,
+    reward: Annotated[float, typer.Option("--reward", min=0.0, max=1.0)],
+    note: Annotated[str, typer.Option("--note")] = "",
+) -> None:
+    """Record the real business outcome that should influence future AI decisions."""
+
+    job = _service().record_campaign_outcome(job_id, reward=reward, note=note)
+    console.print_json(job.model_dump_json())
+
+
+@app.command("worker")
+def worker(
+    once: Annotated[
+        bool,
+        typer.Option("--once", help="Run one scheduler tick and exit."),
+    ] = False,
+    poll_seconds: Annotated[
+        float | None,
+        typer.Option("--poll-seconds", min=1.0, max=300.0),
+    ] = None,
+) -> None:
+    """Run the durable campaign planner/execution worker."""
+
+    settings = get_settings()
+    interval = poll_seconds or settings.campaign_worker_poll_seconds
+
+    async def run() -> None:
+        while True:
+            tick = await _service().worker_tick()
+            console.print_json(tick.model_dump_json())
+            if once:
+                return
+            await asyncio.sleep(interval)
+
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        console.print("Worker stopped.")
 
 
 @app.command("ui")
