@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -29,6 +30,7 @@ def doctor() -> None:
         "instagram_token_configured": settings.instagram_access_token is not None,
         "write_approval_required": settings.require_write_approval,
         "research_max_pages": settings.research_max_pages,
+        "state_db_path": settings.state_db_path,
     }
     console.print_json(json.dumps(checks))
 
@@ -46,8 +48,8 @@ def profile() -> None:
 
 @app.command("research")
 def research(
-    objective: str = typer.Argument(..., help="Research objective."),
-    seed: list[str] = typer.Option(..., "--seed", help="Public-web seed URL."),
+    objective: Annotated[str, typer.Argument(help="Research objective.")],
+    seed: Annotated[list[str], typer.Option("--seed", help="Public-web seed URL.")],
 ) -> None:
     """Run adaptive public-web research. Meta-owned domains are blocked by default."""
 

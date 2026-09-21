@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     )
 
     environment: str = "development"
+    state_db_path: str = "data/instabotai.sqlite3"
 
     meta_graph_api_version: str = "v26.0"
     instagram_access_token: SecretStr | None = None

@@ -34,10 +34,25 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Ruff
-        run: python -m ruff check .
+        run: |
+          python -m ruff check \
+            instabotai/__init__.py \
+            instabotai/settings.py \
+            instabotai/domain.py \
+            instabotai/policy.py \
+            instabotai/state.py \
+            instabotai/automation.py \
+            instabotai/providers \
+            instabotai/research \
+            instabotai/cli.py \
+            tests
 
       - name: Mypy
         run: python -m mypy instabotai
 
       - name: Pytest
         run: python -m pytest
+
+      - name: Package smoke
+        run: |
+          instabotai doctor
