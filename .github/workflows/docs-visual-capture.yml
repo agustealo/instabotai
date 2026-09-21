@@ -1,0 +1,84 @@
+name: Docs Visual Capture
+
+on:
+  push:
+    branches:
+      - "docs/visual-evidence"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: ${{ !contains(github.event.head_commit.message || '', '[docs-capture]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install packaged console
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+
+      - name: Boot real consumer console
+        env:
+          INSTABOTAI_STATE_DB_PATH: /tmp/instabotai-docs.sqlite3
+          INSTABOTAI_INSTAGRAM_ACCESS_TOKEN: docs-capture-token
+          INSTABOTAI_INSTAGRAM_ACCOUNT_ID: docs-capture-account
+          INSTABOTAI_UI_OPEN_BROWSER: "false"
+        run: |
+          instabotai ui --no-browser >/tmp/instabotai-docs-ui.log 2>&1 &
+          echo $! >/tmp/instabotai-docs-ui.pid
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8765/healthz", timeout=2) as response:
+                      if json.load(response).get("status") == "ok":
+                          break
+              except Exception:
+                  if attempt == 29:
+                      raise
+                  time.sleep(1)
+          PY
+
+      - name: Capture Overview from the running product
+        run: |
+          browser="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$browser"
+          mkdir -p docs/screenshots
+          "$browser" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --hide-scrollbars \
+            --window-size=1440,1180 \
+            --virtual-time-budget=5000 \
+            --screenshot=docs/screenshots/consumer-console-overview.png \
+            http://127.0.0.1:8765/
+          test -s docs/screenshots/consumer-console-overview.png
+
+      - name: Commit current product capture
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/consumer-console-overview.png
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "docs: refresh real console screenshot [docs-capture]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
