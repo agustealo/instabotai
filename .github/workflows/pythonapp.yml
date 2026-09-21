@@ -1,6 +1,10 @@
 name: Quality Gate
 
 on:
+  push:
+    branches:
+      - master
+      - "revival/**"
   pull_request:
 
 permissions:
@@ -13,13 +17,13 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -30,18 +34,7 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Ruff
-        run: |
-          python -m ruff check \
-            instabotai/__init__.py \
-            instabotai/settings.py \
-            instabotai/domain.py \
-            instabotai/policy.py \
-            instabotai/state.py \
-            instabotai/automation.py \
-            instabotai/providers \
-            instabotai/research \
-            instabotai/cli.py \
-            tests
+        run: python -m ruff check instabotai tests
 
       - name: Mypy
         run: python -m mypy instabotai
@@ -50,4 +43,37 @@ jobs:
         run: python -m pytest
 
       - name: Package smoke
-        run: instabotai doctor
+        run: |
+          instabotai doctor
+          python -c "from instabotai.web import create_app; assert create_app().title == 'InstabotAI Consumer Console'"
+
+      - name: Container smoke
+        run: |
+          docker build -t instabotai-ci .
+          docker run --rm instabotai-ci doctor
+
+          container_id=$(docker run -d \
+            -p 127.0.0.1:8765:8765 \
+            -e INSTABOTAI_UI_HOST=0.0.0.0 \
+            -e INSTABOTAI_UI_ALLOW_REMOTE=true \
+            instabotai-ci ui --no-browser)
+          trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true' EXIT
+
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8765/healthz", timeout=2) as response:
+                      payload = json.load(response)
+                  if payload.get("status") == "ok":
+                      break
+              except Exception:
+                  if attempt == 29:
+                      raise
+                  time.sleep(1)
+          else:
+              raise RuntimeError("consumer console did not become healthy")
+          PY

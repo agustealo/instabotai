@@ -1,0 +1,90 @@
+"""Fail-closed write policy for Instagram automation."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import assert_never
+
+from instabotai.domain import ActionType, ApprovalState, PlannedAction, UsageSnapshot
+from instabotai.settings import Settings
+
+
+class PolicyViolation(RuntimeError):
+    """Raised when a write action violates runtime policy."""
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyDecision:
+    allowed: bool
+    reason: str
+
+
+class AutomationPolicy:
+    """Enforce supported actions, approvals, confidence, and daily limits."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def evaluate(self, action: PlannedAction, usage: UsageSnapshot) -> PolicyDecision:
+        precondition = self.evaluate_preconditions(action)
+        if not precondition.allowed:
+            return precondition
+        return self._check_limit(action.action_type, usage)
+
+    def evaluate_preconditions(self, action: PlannedAction) -> PolicyDecision:
+        """Evaluate checks that do not depend on mutable usage counters."""
+
+        if action.confidence < self._settings.write_confidence_threshold:
+            return PolicyDecision(
+                False,
+                f"confidence {action.confidence:.2f} is below "
+                f"{self._settings.write_confidence_threshold:.2f}",
+            )
+
+        if self._settings.require_write_approval and action.approval is not ApprovalState.APPROVED:
+            return PolicyDecision(False, "human approval is required")
+
+        return PolicyDecision(True, "allowed")
+
+    def require_preconditions(self, action: PlannedAction) -> None:
+        decision = self.evaluate_preconditions(action)
+        if not decision.allowed:
+            raise PolicyViolation(decision.reason)
+
+    def require_allowed(self, action: PlannedAction, usage: UsageSnapshot) -> None:
+        decision = self.evaluate(action, usage)
+        if not decision.allowed:
+            raise PolicyViolation(decision.reason)
+
+    def daily_limit(self, action_type: ActionType) -> int:
+        """Return the configured hard daily reservation limit for an action type."""
+
+        if action_type is ActionType.PUBLISH_IMAGE:
+            return self._settings.daily_publish_limit
+        if action_type is ActionType.REPLY_TO_COMMENT:
+            return self._settings.daily_comment_reply_limit
+        if action_type is ActionType.HIDE_COMMENT:
+            return self._settings.daily_comment_moderation_limit
+        assert_never(action_type)
+
+    def _check_limit(self, action_type: ActionType, usage: UsageSnapshot) -> PolicyDecision:
+        if action_type is ActionType.PUBLISH_IMAGE:
+            allowed = usage.published_today < self._settings.daily_publish_limit
+            reason = "daily publish limit reached" if not allowed else "allowed"
+            return PolicyDecision(allowed, reason)
+
+        if action_type is ActionType.REPLY_TO_COMMENT:
+            allowed = usage.comment_replies_today < self._settings.daily_comment_reply_limit
+            return PolicyDecision(
+                allowed,
+                "daily comment reply limit reached" if not allowed else "allowed",
+            )
+
+        if action_type is ActionType.HIDE_COMMENT:
+            allowed = usage.comments_moderated_today < self._settings.daily_comment_moderation_limit
+            return PolicyDecision(
+                allowed,
+                "daily comment moderation limit reached" if not allowed else "allowed",
+            )
+
+        assert_never(action_type)

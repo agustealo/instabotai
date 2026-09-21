@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="InstabotAI consumer console">
+  <title>InstabotAI Console</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">IA</div>
+        <div>
+          <strong>InstabotAI</strong>
+          <span>Consumer Console</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <button class="nav-item is-active" data-view="overview">
+          <span class="nav-icon">◫</span><span>Overview</span>
+        </button>
+        <button class="nav-item" data-view="ai">
+          <span class="nav-icon">✦</span><span>AI Studio</span>
+        </button>
+        <button class="nav-item" data-view="decisions">
+          <span class="nav-icon">◎</span><span>Decision Audit</span>
+        </button>
+        <button class="nav-item" data-view="research">
+          <span class="nav-icon">⌕</span><span>Research</span>
+        </button>
+        <button class="nav-item" data-view="account">
+          <span class="nav-icon">◉</span><span>Account</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-row">
+          <span class="status-dot" id="health-dot"></span>
+          <span id="health-label">Checking runtime…</span>
+        </div>
+        <small>Writes remain policy-gated.</small>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Adaptive intelligence runtime</p>
+          <h1 id="view-title">Overview</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="button button-ghost" id="refresh-runtime">Refresh</button>
+          <div class="model-chip" id="model-chip">AI: loading…</div>
+        </div>
+      </header>
+
+      <div id="flash" class="flash" role="status" aria-live="polite"></div>
+
+      <section class="view is-active" id="view-overview" data-title="Overview">
+        <div class="hero">
+          <div>
+            <span class="hero-kicker">Real model inference. Durable decisions. Controlled actions.</span>
+            <h2>One operating surface for intelligence, research, and account context.</h2>
+            <p>
+              The console talks to the same planner, critic, decision journal, research service,
+              and Instagram provider used by the CLI. AI can propose work, but cannot silently
+              approve or execute its own writes.
+            </p>
+          </div>
+          <button class="button button-primary" data-go="ai">Open AI Studio</button>
+        </div>
+
+        <div class="metric-grid" id="runtime-metrics">
+          <article class="metric-card skeleton"></article>
+          <article class="metric-card skeleton"></article>
+          <article class="metric-card skeleton"></article>
+          <article class="metric-card skeleton"></article>
+        </div>
+
+        <div class="two-column">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Authority map</p>
+                <h3>What the AI can and cannot do</h3>
+              </div>
+            </div>
+            <div class="authority-list">
+              <div class="authority-item">
+                <span class="authority-icon good">✓</span>
+                <div><strong>Reason and critique</strong><p>Generate candidates, cite evidence, score utility and risk.</p></div>
+              </div>
+              <div class="authority-item">
+                <span class="authority-icon good">✓</span>
+                <div><strong>Learn from outcomes</strong><p>Use bounded historical reward when relevant to a new objective.</p></div>
+              </div>
+              <div class="authority-item">
+                <span class="authority-icon good">✓</span>
+                <div><strong>Create pending actions</strong><p>Produce auditable planned work with stable decision IDs.</p></div>
+              </div>
+              <div class="authority-item">
+                <span class="authority-icon blocked">×</span>
+                <div><strong>Self-authorize writes</strong><p>Approvals, limits, idempotency, and provider controls remain external.</p></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Readiness</p>
+                <h3>Connected systems</h3>
+              </div>
+            </div>
+            <div id="readiness-list" class="readiness-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-ai" data-title="AI Studio">
+        <div class="section-grid ai-layout">
+          <div class="stack">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Live model health</p>
+                  <h3>Inference probe</h3>
+                  <p>Runs a genuine structured round trip against the configured model.</p>
+                </div>
+                <button class="button button-secondary" id="run-ai-probe">Run AI check</button>
+              </div>
+              <div id="probe-result" class="probe-result empty-state">
+                No live probe has been run in this session.
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Planner input</p>
+                  <h3>Build a reviewed plan</h3>
+                  <p>Evidence and context are treated as untrusted data, never as authority.</p>
+                </div>
+              </div>
+
+              <form id="plan-form" class="form-stack">
+                <label>
+                  <span>Business objective</span>
+                  <textarea id="plan-objective" rows="4" required
+                    placeholder="Publish the approved product announcement using the supplied evidence."></textarea>
+                </label>
+
+                <div class="field-header">
+                  <div>
+                    <strong>Evidence</strong>
+                    <small>Every candidate must cite these stable evidence IDs.</small>
+                  </div>
+                  <button type="button" class="button button-ghost button-small" id="add-evidence">
+                    Add evidence
+                  </button>
+                </div>
+                <div id="evidence-list" class="evidence-list"></div>
+
+                <details class="advanced">
+                  <summary>Advanced context</summary>
+                  <label>
+                    <span>Bounded JSON context</span>
+                    <textarea id="plan-context" rows="7" spellcheck="false">{}</textarea>
+                  </label>
+                </details>
+
+                <div class="form-actions">
+                  <span class="form-note">Planning never executes the resulting action.</span>
+                  <button class="button button-primary" type="submit" id="plan-submit">
+                    Run planner + critic
+                  </button>
+                </div>
+              </form>
+            </article>
+          </div>
+
+          <aside class="stack sticky-stack">
+            <article class="panel result-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Decision result</p>
+                  <h3>Reviewed intelligence</h3>
+                </div>
+                <button class="button button-ghost button-small" id="copy-decision" disabled>
+                  Copy JSON
+                </button>
+              </div>
+              <div id="decision-result" class="empty-state tall">
+                Submit an objective and evidence to inspect the planner, critic, score,
+                abstention state, and pending action.
+              </div>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-decisions" data-title="Decision Audit">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Durable reasoning history</p>
+              <h3>Decision journal</h3>
+              <p>Every finalized plan or abstention is persisted with its model identity and review.</p>
+            </div>
+            <div class="inline-actions">
+              <input id="decision-search" class="search-input" type="search" placeholder="Filter decisions">
+              <button class="button button-secondary" id="refresh-decisions">Refresh</button>
+            </div>
+          </div>
+          <div id="decision-list" class="decision-list">
+            <div class="empty-state">Load the decision journal to inspect recent reasoning.</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" id="view-research" data-title="Adaptive Research">
+        <div class="two-column research-layout">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Crawl4AI research</p>
+                <h3>Investigate a business objective</h3>
+                <p>Public-web crawling is bounded, scored, policy-aware, and separate from Instagram account access.</p>
+              </div>
+            </div>
+            <form id="research-form" class="form-stack">
+              <label>
+                <span>Research objective</span>
+                <textarea id="research-objective" rows="4" required
+                  placeholder="Identify current themes in local fitness marketing."></textarea>
+              </label>
+              <label>
+                <span>Seed URLs</span>
+                <textarea id="research-seeds" rows="7" required
+                  placeholder="https://example.com/report&#10;https://example.org/industry-news"></textarea>
+                <small>One public HTTP/HTTPS URL per line.</small>
+              </label>
+              <div class="form-actions">
+                <span class="form-note">Meta-owned social domains remain blocked by default.</span>
+                <button class="button button-primary" type="submit" id="research-submit">
+                  Run research
+                </button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Research result</p>
+                <h3>Evidence map</h3>
+              </div>
+            </div>
+            <div id="research-result" class="empty-state tall">
+              Run a research objective to inspect confidence, relevant pages, and blocked or failed URLs.
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-account" data-title="Account">
+        <div class="two-column">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Provider context</p>
+                <h3>Instagram account</h3>
+                <p>Reads through the selected provider. No write is performed.</p>
+              </div>
+              <button class="button button-secondary" id="load-profile">Read profile</button>
+            </div>
+            <div id="profile-result" class="empty-state">
+              Profile data is fetched only when requested.
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Runtime configuration</p>
+                <h3>Provider readiness</h3>
+              </div>
+            </div>
+            <div id="account-config" class="config-list"></div>
+            <div class="notice">
+              Credentials remain environment-backed. This console reports configuration state
+              without exposing tokens or passwords.
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="evidence-template">
+    <div class="evidence-card">
+      <div class="evidence-topline">
+        <input class="evidence-id" type="text" required maxlength="120" aria-label="Evidence ID">
+        <button type="button" class="icon-button remove-evidence" aria-label="Remove evidence">×</button>
+      </div>
+      <div class="evidence-meta">
+        <label>
+          <span>Source</span>
+          <input class="evidence-source" type="text" required maxlength="500">
+        </label>
+        <label>
+          <span>Confidence</span>
+          <input class="evidence-confidence" type="number" min="0" max="1" step="0.05" value="1">
+        </label>
+      </div>
+      <label>
+        <span>Evidence content</span>
+        <textarea class="evidence-content" rows="4" required maxlength="12000"></textarea>
+      </label>
+    </div>
+  </template>
+
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

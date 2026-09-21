@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="888" viewBox="0 0 1600 888">
+<rect width="100%" height="100%" fill="#0f1115"/>
+<rect width="100%" height="86" fill="#1d2026"/>
+<circle cx="38" cy="38" r="9" fill="#ff5f56"/><circle cx="72" cy="38" r="9" fill="#ffbd2e"/><circle cx="106" cy="38" r="9" fill="#27c93f"/>
+<text x="150" y="49" fill="#ebeef5" font-size="30" font-weight="700" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">InstabotAI · packaged runtime diagnostics</text>
+<text x="44" y="130" fill="#67c5ff" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">$ instabotai doctor</text>
+<text x="44" y="164" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">{</text>
+<text x="44" y="198" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;environment&quot;: &quot;development&quot;,</text>
+<text x="44" y="232" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;ai_provider&quot;: &quot;ollama&quot;,</text>
+<text x="44" y="266" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;ai_model&quot;: &quot;llama3.2:3b&quot;,</text>
+<text x="44" y="300" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;ai_base_url&quot;: &quot;http://127.0.0.1:11434&quot;,</text>
+<text x="44" y="334" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;ai_api_key_configured&quot;: false,</text>
+<text x="44" y="368" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;ai_critic_enabled&quot;: true,</text>
+<text x="44" y="402" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;ai_min_decision_score&quot;: 0.65,</text>
+<text x="44" y="436" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;instagram_provider&quot;: &quot;official&quot;,</text>
+<text x="44" y="470" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;graph_api_version&quot;: &quot;v26.0&quot;,</text>
+<text x="44" y="504" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;instagram_account_configured&quot;: false,</text>
+<text x="44" y="538" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;instagram_token_configured&quot;: false,</text>
+<text x="44" y="572" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;private_username_configured&quot;: false,</text>
+<text x="44" y="606" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;private_password_configured&quot;: false,</text>
+<text x="44" y="640" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;write_approval_required&quot;: true,</text>
+<text x="44" y="674" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;research_max_pages&quot;: 20,</text>
+<text x="44" y="708" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">  &quot;state_db_path&quot;: &quot;data/instabotai.sqlite3&quot;</text>
+<text x="44" y="742" fill="#ebeef5" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">}</text>
+<text x="44" y="810" fill="#9ca3af" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Captured from GitHub Actions Quality Gate #104 · exact head 6f74a5b0fb1ffbc22e235597a06a173d191939d6</text>
+</svg>
