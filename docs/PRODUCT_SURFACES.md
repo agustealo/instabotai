@@ -6,7 +6,21 @@ This page is the canonical visual and operational evidence index for the current
 
 Documentation must represent a surface that exists in the current product or real verification output produced by a runnable build. Do not add speculative dashboards, placeholder UI, fabricated command output, mock production states, credential-dependent success screens presented as generic evidence, or screenshots copied from the retired application.
 
-The consumer console is backed by the same canonical `InstabotApplication`, `IntelligenceEngine`, `DecisionJournal`, `CampaignRuntime`, provider adapters, research service, policy engine, and durable-state authorities used by the CLI. The GUI does not implement a parallel reasoning or execution stack.
+The consumer console is backed by the same canonical `InstabotApplication`, `IntelligenceEngine`, `DecisionJournal`, `CampaignRuntime`, provider adapters, research service, policy engine, readiness service, and durable-state authorities used by the CLI. The GUI does not implement a parallel reasoning or execution stack.
+
+Explanatory SVG diagrams may simplify a real architecture or control flow, but they must map to current code authorities and must never be presented as runtime screenshots.
+
+## Visual evidence inventory
+
+| Asset | Kind | Purpose | Provenance |
+| --- | --- | --- | --- |
+| `screenshots/consumer-console-overview.png` | Real product screenshot | Current packaged Overview/readiness surface | Docs Visual Capture run `35649566887`; source head `e947c1380e70210fa5f4f55742f21818368cb916`; product code based on merged `master@d7181ed4eb957538a2a3c93453dcd54d416e9b5c`; capture committed as `0baba46c5e2545e46468d29fc4e91729693172f0` |
+| `screenshots/runtime-doctor.svg` | Runtime evidence | Secret-free packaged runtime/config diagnostics | Retained original exact-head evidence; not relabeled as newer output |
+| `screenshots/quality-gate.svg` | CI evidence | Release-gate status for its documented baseline | Retained original exact-head evidence; newest workflow/PR remains authoritative |
+| `screenshots/architecture-flow.svg` | Explanatory diagram | Current reasoning → durable state → write-control → provider → outcome path | Derived from current canonical runtime authorities |
+| `screenshots/consumer-trial-readiness.svg` | Explanatory diagram | Static/live readiness ownership and separation from write authority | Derived from `ConsumerTrialReadinessService` and current API/CLI surfaces |
+
+The real console capture is reproducible. Run the manual **Docs Visual Capture** workflow (`.github/workflows/docs-visual-capture.yml`) against the branch whose UI you intend to document. The workflow installs the package, boots the real local console, waits for `/healthz`, captures the Overview with headless Chrome, and commits the PNG. It does not claim authenticated Instagram or model success.
 
 ## Consumer console
 
@@ -17,13 +31,21 @@ The consumer console is backed by the same canonical `InstabotApplication`, `Int
 
 ### Overview
 
+![InstabotAI consumer console Overview](screenshots/consumer-console-overview.png)
+
+This is a real packaged-console capture from the source/provenance recorded above. The capture uses non-secret CI-only provider configuration so the static readiness surface can render. It is **not** evidence of authenticated provider or live-model success.
+
+Overview exposes:
+
 - secret-free runtime readiness;
 - configured AI provider and model;
 - critic and decision-threshold state;
-- Instagram provider readiness;
-- decision-journal status;
-- research budget and confidence target;
-- scheduler and write-policy state.
+- selected Instagram provider readiness;
+- durable-state health;
+- research package/profile state;
+- global write-approval and bounded write-capacity checks;
+- static/live `ConsumerTrialReadiness` status;
+- a **Run live checks** control for genuine AI + read-only Instagram probes.
 
 ### AI Studio
 
@@ -75,6 +97,8 @@ The browser does not bypass the write spine:
 
 `CampaignRuntime -> AutomationService -> AutomationPolicy -> ActionLedger -> Instagram provider`
 
+![InstabotAI architecture and authority flow](screenshots/architecture-flow.svg)
+
 ### Decision Audit
 
 - newest-first durable `DecisionJournal` feed;
@@ -85,7 +109,7 @@ The browser does not bypass the write spine:
 
 The consumer research surface uses the canonical Crawl4AI-backed service and exposes objective, multiple seed URLs, confidence, early-stop state, per-page relevance, excerpts, blocked URLs, and failed URLs.
 
-The egress boundary now includes:
+The egress boundary includes:
 
 - HTTP/HTTPS-only destinations;
 - no URL userinfo credentials;
@@ -106,6 +130,16 @@ Meta-owned social domains remain blocked by default. Instagram account data belo
 - credential readiness as configured/not configured only;
 - no token or password values returned to the browser;
 - current write-approval state.
+
+## Consumer-trial readiness surface
+
+The CLI command `instabotai trial-readiness` and the Overview API use one canonical `ConsumerTrialReadinessService`.
+
+![InstabotAI consumer-trial readiness flow](screenshots/consumer-trial-readiness.svg)
+
+Static checks verify package/runtime identity, truly durable SQLite state, AI configuration, selected-provider credential completeness, research-extra availability according to the chosen trial profile, write approval, and bounded write capacity. Live mode adds genuine model inference plus a read-only Instagram profile request. Readiness reports are secret-free and do not grant write authority.
+
+See [CONSUMER_TRIAL_READINESS.md](CONSUMER_TRIAL_READINESS.md).
 
 ## Durable worker surface
 
@@ -159,18 +193,19 @@ The canonical GitHub Actions Quality Gate proves the proposed source tree instal
 
 ![InstabotAI quality gate](screenshots/quality-gate.svg)
 
-The gate requires:
+The current gate requires:
 
 - Python 3.12 package/development installation;
 - Ruff across `instabotai` and tests;
 - strict mypy across production source;
 - complete pytest suite;
 - consumer static-asset/API regressions;
-- JavaScript parser validation through Node when available;
 - installed `instabotai doctor` smoke;
 - FastAPI application creation smoke;
+- a freshly built wheel installed in a clean virtual environment;
+- clean-wheel `trial-readiness` smoke;
 - Docker image build;
-- packaged `instabotai doctor` inside Docker;
+- packaged `doctor` and `trial-readiness` inside Docker;
 - consumer-console startup inside Docker;
 - successful container `/healthz` response.
 
@@ -179,6 +214,8 @@ The gate requires:
 | Surface | Status | External systems | Write authority |
 | --- | --- | --- | --- |
 | `instabotai doctor` | Implemented | No | None |
+| `instabotai trial-readiness` | Implemented | No in static mode | None |
+| `instabotai trial-readiness --live` | Implemented | Reasoning model + Instagram provider read | None |
 | `instabotai ai-check` | Implemented | Reasoning model | None |
 | `instabotai plan` | Implemented | Reasoning model | Pending action only |
 | `instabotai decisions` | Implemented | Local SQLite | Read-only |
@@ -190,43 +227,41 @@ The gate requires:
 | `instabotai campaign-execute` | Implemented | Instagram provider | Canonical policy-mediated path |
 | `instabotai campaign-outcome` | Implemented | Local durable state | Learning signal only |
 | `instabotai worker` | Implemented | Model/research/provider as work requires | Canonical policy-mediated path |
-| Consumer Overview | Implemented | Local runtime | None |
+| Consumer Overview | Implemented | Local runtime; optional live probes | None |
 | Consumer AI Studio | Implemented | Reasoning model | Pending action only |
 | Consumer Campaigns | Implemented | Model/research/provider as requested | Approval + canonical execution |
 | Consumer Decision Audit | Implemented | Local SQLite | Read-only |
 | Consumer Research | Implemented | Public web through hardened egress policy | None |
 | Consumer Account | Implemented | Instagram provider | Read-only |
 
-## Security-hardening verification baseline
+## Current consumer-trial verification baseline
 
-The SSRF and ambiguous-write hardening code was validated on `61bb6cd6ae0b5411723a3f4b04e4b63fd7e43596` with Quality Gate #135:
+Consumer-trial readiness code was validated on exact candidate `12f93f1d5647ff173c19fb3dd88d94a1ca425638` with Quality Gate #153 before merge to `master@d7181ed4eb957538a2a3c93453dcd54d416e9b5c`:
 
 - Ruff green;
-- strict mypy green across 26 production source files;
-- **53 pytest tests passed in 7.29s**;
-- DNS/private-address and browser redirect-route regressions green;
-- safe-read retry and single-dispatch POST regressions green;
-- ambiguous-write non-replay/idempotency/quota regressions green;
+- strict mypy green across 27 production source files;
+- **66 pytest tests passed**;
 - package smoke green;
-- Docker build and packaged runtime smoke green;
-- consumer-console startup and `/healthz` green.
+- clean-wheel install and readiness smoke green;
+- Docker build, packaged runtime readiness, and consumer `/healthz` green.
 
-The PR description and newest exact-head GitHub Actions run remain the authority if documentation-only commits advance the branch after this baseline.
+The PR description and newest exact-head GitHub Actions run remain the authority if later commits advance the branch.
 
 ## Why authenticated screenshots remain selective
 
 A real `ai-check` requires a reachable model. Real Instagram profile/write evidence requires account credentials. Repository documentation must not manufacture provider success, embed private account data, or substitute mock content just to make the product look populated.
 
-When a new consumer-console screenshot is committed, it must come from a current runnable build with secrets and personal account information absent or redacted, and its exact head or release must be recorded here.
+The current Overview screenshot intentionally proves the packaged UI and static readiness presentation only. Authenticated provider/model screenshots should be added only from controlled real trials with secrets and private account identifiers absent or redacted.
 
-## Updating this page
+## Updating visual evidence
 
 When a product surface changes:
 
 1. verify it against the current exact-head build;
-2. capture only real product/runtime output;
-3. remove or redact secrets and private identifiers;
-4. store visual captures under `docs/screenshots/`;
-5. record the exact head/release that produced them;
-6. update this matrix and README;
-7. remove obsolete visual evidence when the corresponding surface no longer exists.
+2. for the Overview, run the manual **Docs Visual Capture** workflow rather than drawing a replacement screenshot;
+3. capture only real product/runtime output;
+4. remove or redact secrets and private identifiers;
+5. store visual captures under `docs/screenshots/`;
+6. record the exact source head/run/release that produced them;
+7. update this matrix and README;
+8. remove obsolete visual evidence when the corresponding surface no longer exists.
