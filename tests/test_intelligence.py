@@ -27,7 +27,11 @@ class ScriptedReasoningModel:
         )
 
 
-def planner_candidate(*, action: str = "publish_image", candidate_id: str = "candidate-1") -> dict[str, object]:
+def planner_candidate(
+    *,
+    action: str = "publish_image",
+    candidate_id: str = "candidate-1",
+) -> dict[str, object]:
     return {
         "candidates": [
             {
