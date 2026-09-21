@@ -1,8 +1,8 @@
 """Consumer campaign workspace asset and shell regressions."""
 
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 import httpx
 import pytest
