@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from instabotai.domain import ActionType, PlannedAction
-from instabotai.policy import AutomationPolicy
-from instabotai.state import ActionLedger
+from instabotai.policy import AutomationPolicy, PolicyViolation
+from instabotai.state import ActionLedger, DailyLimitExceededError
 
 
 class InstagramWriter(Protocol):
@@ -27,12 +27,7 @@ class InstagramWriter(Protocol):
 
 
 class AutomationService:
-    """Only supported write path for the modern runtime.
-
-    Every action is checked against policy, reserved durably by idempotency
-    key, executed through the selected provider, and recorded as succeeded
-    or failed.
-    """
+    """Only supported write path for the modern runtime."""
 
     def __init__(
         self,
@@ -45,9 +40,14 @@ class AutomationService:
         self._provider = provider
 
     async def execute(self, action: PlannedAction) -> Any:
-        usage = self._ledger.usage_snapshot()
-        self._policy.require_allowed(action, usage)
-        self._ledger.reserve(action)
+        self._policy.require_preconditions(action)
+        try:
+            self._ledger.reserve(
+                action,
+                daily_limit=self._policy.daily_limit(action.action_type),
+            )
+        except DailyLimitExceededError as exc:
+            raise PolicyViolation(str(exc)) from exc
 
         try:
             result = await self._dispatch(action)

@@ -25,6 +25,14 @@ class AutomationPolicy:
         self._settings = settings
 
     def evaluate(self, action: PlannedAction, usage: UsageSnapshot) -> PolicyDecision:
+        precondition = self.evaluate_preconditions(action)
+        if not precondition.allowed:
+            return precondition
+        return self._check_limit(action.action_type, usage)
+
+    def evaluate_preconditions(self, action: PlannedAction) -> PolicyDecision:
+        """Evaluate checks that do not depend on mutable usage counters."""
+
         if action.confidence < self._settings.write_confidence_threshold:
             return PolicyDecision(
                 False,
@@ -35,16 +43,28 @@ class AutomationPolicy:
         if self._settings.require_write_approval and action.approval is not ApprovalState.APPROVED:
             return PolicyDecision(False, "human approval is required")
 
-        limit_decision = self._check_limit(action.action_type, usage)
-        if not limit_decision.allowed:
-            return limit_decision
-
         return PolicyDecision(True, "allowed")
+
+    def require_preconditions(self, action: PlannedAction) -> None:
+        decision = self.evaluate_preconditions(action)
+        if not decision.allowed:
+            raise PolicyViolation(decision.reason)
 
     def require_allowed(self, action: PlannedAction, usage: UsageSnapshot) -> None:
         decision = self.evaluate(action, usage)
         if not decision.allowed:
             raise PolicyViolation(decision.reason)
+
+    def daily_limit(self, action_type: ActionType) -> int:
+        """Return the configured hard daily reservation limit for an action type."""
+
+        if action_type is ActionType.PUBLISH_IMAGE:
+            return self._settings.daily_publish_limit
+        if action_type is ActionType.REPLY_TO_COMMENT:
+            return self._settings.daily_comment_reply_limit
+        if action_type is ActionType.HIDE_COMMENT:
+            return self._settings.daily_comment_moderation_limit
+        raise PolicyViolation(f"unsupported action: {action_type}")
 
     def _check_limit(self, action_type: ActionType, usage: UsageSnapshot) -> PolicyDecision:
         if action_type is ActionType.PUBLISH_IMAGE:

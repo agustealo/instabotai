@@ -15,52 +15,84 @@ class DuplicateActionError(RuntimeError):
     """Raised when an idempotency key has already been reserved."""
 
 
-class ActionLedger:
-    """SQLite-backed action ledger.
+class DailyLimitExceededError(RuntimeError):
+    """Raised when a transactional daily reservation limit is exhausted."""
 
-    SQLite is intentionally the default single-node persistence layer for the
-    revival runtime. It keeps policy counters and idempotency durable without
-    adding a service dependency. A server deployment can later implement the
-    same repository contract on PostgreSQL.
-    """
+
+class ActionLedger:
+    """SQLite-backed action ledger with transactional quota reservation."""
 
     def __init__(self, database_path: str) -> None:
         self._database_path = database_path
+        self._memory_connection: sqlite3.Connection | None = None
         if database_path != ":memory:":
             Path(database_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+        else:
+            self._memory_connection = self._new_connection(database_path)
         self._initialize()
 
-    def reserve(self, action: PlannedAction) -> None:
+    def reserve(self, action: PlannedAction, *, daily_limit: int) -> None:
+        """Reserve one action atomically against idempotency and daily quota."""
+
         payload = json.dumps(action.payload, sort_keys=True, separators=(",", ":"))
+        day_start = self._day_start().isoformat()
+        connection = self._connect()
         try:
-            with self._connect() as connection:
-                connection.execute(
-                    """
-                    INSERT INTO automation_actions (
-                        idempotency_key,
-                        action_type,
-                        target_id,
-                        status,
-                        reason,
-                        confidence,
-                        payload_json,
-                        created_at
-                    ) VALUES (?, ?, ?, 'reserved', ?, ?, ?, ?)
-                    """,
-                    (
-                        action.idempotency_key,
-                        action.action_type.value,
-                        action.target_id,
-                        action.reason,
-                        action.confidence,
-                        payload,
-                        action.created_at.astimezone(UTC).isoformat(),
-                    ),
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT 1 FROM automation_actions WHERE idempotency_key = ?",
+                (action.idempotency_key,),
+            ).fetchone()
+            if existing is not None:
+                raise DuplicateActionError(
+                    f"action already exists for idempotency key {action.idempotency_key!r}"
                 )
-        except sqlite3.IntegrityError as exc:
-            raise DuplicateActionError(
-                f"action already exists for idempotency key {action.idempotency_key!r}"
-            ) from exc
+
+            count_row = connection.execute(
+                """
+                SELECT COUNT(*) AS action_count
+                FROM automation_actions
+                WHERE action_type = ?
+                  AND status IN ('reserved', 'succeeded')
+                  AND created_at >= ?
+                """,
+                (action.action_type.value, day_start),
+            ).fetchone()
+            action_count = int(count_row["action_count"]) if count_row is not None else 0
+            if action_count >= daily_limit:
+                raise DailyLimitExceededError(
+                    f"daily {action.action_type.value} limit reached ({daily_limit})"
+                )
+
+            connection.execute(
+                """
+                INSERT INTO automation_actions (
+                    idempotency_key,
+                    action_type,
+                    target_id,
+                    status,
+                    reason,
+                    confidence,
+                    payload_json,
+                    created_at
+                ) VALUES (?, ?, ?, 'reserved', ?, ?, ?, ?)
+                """,
+                (
+                    action.idempotency_key,
+                    action.action_type.value,
+                    action.target_id,
+                    action.reason,
+                    action.confidence,
+                    payload,
+                    action.created_at.astimezone(UTC).isoformat(),
+                ),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            self._release(connection)
 
     def mark_succeeded(self, idempotency_key: str, provider_result: Any) -> None:
         self._finish(
@@ -79,27 +111,23 @@ class ActionLedger:
         )
 
     def usage_snapshot(self, now: datetime | None = None) -> UsageSnapshot:
-        current = now or datetime.now(UTC)
-        if current.tzinfo is None:
-            current = current.replace(tzinfo=UTC)
-        day_start = current.astimezone(UTC).replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        ).isoformat()
+        """Return committed and in-flight usage for the current UTC day."""
 
-        with self._connect() as connection:
+        day_start = self._day_start(now).isoformat()
+        connection = self._connect()
+        try:
             rows = connection.execute(
                 """
                 SELECT action_type, COUNT(*) AS action_count
                 FROM automation_actions
-                WHERE status = 'succeeded'
-                  AND executed_at >= ?
+                WHERE status IN ('reserved', 'succeeded')
+                  AND created_at >= ?
                 GROUP BY action_type
                 """,
                 (day_start,),
             ).fetchall()
+        finally:
+            self._release(connection)
 
         counts = {str(row["action_type"]): int(row["action_count"]) for row in rows}
         return UsageSnapshot(
@@ -109,12 +137,22 @@ class ActionLedger:
         )
 
     def status(self, idempotency_key: str) -> str | None:
-        with self._connect() as connection:
+        connection = self._connect()
+        try:
             row = connection.execute(
                 "SELECT status FROM automation_actions WHERE idempotency_key = ?",
                 (idempotency_key,),
             ).fetchone()
+        finally:
+            self._release(connection)
         return str(row["status"]) if row is not None else None
+
+    def close(self) -> None:
+        """Release the persistent in-memory connection, if one is in use."""
+
+        if self._memory_connection is not None:
+            self._memory_connection.close()
+            self._memory_connection = None
 
     def _finish(
         self,
@@ -125,7 +163,8 @@ class ActionLedger:
         error: str | None,
     ) -> None:
         executed_at = datetime.now(UTC).isoformat()
-        with self._connect() as connection:
+        connection = self._connect()
+        try:
             cursor = connection.execute(
                 """
                 UPDATE automation_actions
@@ -139,9 +178,16 @@ class ActionLedger:
                 raise RuntimeError(
                     f"cannot transition action {idempotency_key!r} from reserved to {status}"
                 )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            self._release(connection)
 
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        connection = self._connect()
+        try:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS automation_actions (
@@ -164,14 +210,41 @@ class ActionLedger:
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_automation_actions_usage
-                ON automation_actions (status, executed_at, action_type)
+                ON automation_actions (status, created_at, action_type)
                 """
             )
+            connection.commit()
+        finally:
+            self._release(connection)
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._database_path, timeout=10.0)
+        if self._database_path == ":memory:":
+            if self._memory_connection is None:
+                raise RuntimeError("in-memory action ledger is closed")
+            return self._memory_connection
+        return self._new_connection(self._database_path)
+
+    @staticmethod
+    def _new_connection(database_path: str) -> sqlite3.Connection:
+        connection = sqlite3.connect(database_path, timeout=10.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        if self._database_path != ":memory:":
+        if database_path != ":memory:":
             connection.execute("PRAGMA journal_mode = WAL")
         return connection
+
+    def _release(self, connection: sqlite3.Connection) -> None:
+        if self._database_path != ":memory:":
+            connection.close()
+
+    @staticmethod
+    def _day_start(now: datetime | None = None) -> datetime:
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        return current.astimezone(UTC).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )

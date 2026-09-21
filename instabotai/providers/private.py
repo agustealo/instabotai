@@ -16,7 +16,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 
@@ -29,6 +29,9 @@ class PrivateInstagramProviderError(RuntimeError):
 
 class PrivateInstagramProvider:
     """Policy-compatible adapter around the maintained ``instagrapi`` client."""
+
+    _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+    _MAX_IMAGE_REDIRECTS = 5
 
     def __init__(self, settings: Settings, client: Any | None = None) -> None:
         self._settings = settings
@@ -297,31 +300,46 @@ class PrivateInstagramProvider:
             pass
 
     async def _download_image(self, image_url: str) -> Path:
-        await self._assert_public_http_url(image_url)
+        current_url = image_url
         limits = httpx.Limits(max_connections=4, max_keepalive_connections=2)
         async with httpx.AsyncClient(
             timeout=self._settings.request_timeout_seconds,
-            follow_redirects=True,
+            follow_redirects=False,
             limits=limits,
         ) as client:
-            async with client.stream("GET", image_url) as response:
-                response.raise_for_status()
-                content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
-                if content_type not in {"image/jpeg", "image/jpg"}:
-                    raise PrivateInstagramProviderError(
-                        f"private photo publishing requires JPEG; "
-                        f"received {content_type or 'unknown'}"
-                    )
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as handle:
-                    size = 0
-                    async for chunk in response.aiter_bytes():
-                        size += len(chunk)
-                        if size > self._settings.private_image_max_bytes:
+            for _ in range(self._MAX_IMAGE_REDIRECTS + 1):
+                await self._assert_public_http_url(current_url)
+                async with client.stream("GET", current_url) as response:
+                    if response.status_code in self._REDIRECT_STATUSES:
+                        location = response.headers.get("location")
+                        if not location:
                             raise PrivateInstagramProviderError(
-                                "image exceeds configured download size limit"
+                                "image redirect did not include a location"
                             )
-                        handle.write(chunk)
-                    return Path(handle.name)
+                        current_url = urljoin(current_url, location)
+                        continue
+
+                    response.raise_for_status()
+                    content_type = (
+                        response.headers.get("content-type", "").split(";", 1)[0].lower()
+                    )
+                    if content_type not in {"image/jpeg", "image/jpg"}:
+                        raise PrivateInstagramProviderError(
+                            f"private photo publishing requires JPEG; "
+                            f"received {content_type or 'unknown'}"
+                        )
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as handle:
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > self._settings.private_image_max_bytes:
+                                raise PrivateInstagramProviderError(
+                                    "image exceeds configured download size limit"
+                                )
+                            handle.write(chunk)
+                        return Path(handle.name)
+
+        raise PrivateInstagramProviderError("image exceeded redirect limit")
 
     @staticmethod
     async def _assert_public_http_url(url: str) -> None:
