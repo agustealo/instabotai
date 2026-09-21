@@ -18,45 +18,35 @@ The system is designed around nine requirements:
 8. **Prompt-injection containment.** Context, evidence, and candidate payloads are explicitly treated as untrusted data rather than instructions. Model output still passes typed validation, action-vocabulary containment, critique, and deterministic scoring.
 9. **Policy sovereignty.** The AI cannot disable approval requirements, daily limits, idempotency, provider capability checks, security controls, or the canonical `AutomationService` write path.
 
-## Verified runtime evidence
+## Verified product and runtime evidence
 
-Documentation screenshots are restricted to real, currently implemented surfaces. The repository does not show speculative consumer dashboards while the consumer UI is still under development.
+Documentation images are restricted to current, implemented product surfaces or real verification output. The consumer console is now an implemented product surface and is captured from a real packaged build, not recreated as a mock.
+
+### Consumer console
+
+The Overview capture below was produced by the repository's screenshot workflow from the running FastAPI consumer console using secret-free CI configuration.
+
+![InstabotAI consumer console overview](screenshots/consumer-console-overview.png)
 
 ### Packaged runtime diagnostics
 
-This is the actual `instabotai doctor` output captured from exact-head GitHub Actions run #104.
+The runtime diagnostic image is real `instabotai doctor` evidence and reports secret configuration only as configured/not configured.
 
 ![InstabotAI runtime diagnostics](screenshots/runtime-doctor.svg)
 
-### Exact-head quality gate
+### Quality gate
 
-This is the successful release-evidence path for the same exact head.
+The release-evidence image represents the canonical install, lint, strict typing, test, package, Docker, and live-console verification path.
 
 ![InstabotAI exact-head quality gate](screenshots/quality-gate.svg)
 
-The screenshot provenance and operator-surface matrix are maintained in [PRODUCT_SURFACES.md](PRODUCT_SURFACES.md).
+The current screenshot provenance, capture policy, and operator-surface matrix are maintained in [PRODUCT_SURFACES.md](PRODUCT_SURFACES.md).
 
 ## Runtime flow
 
-```text
-objective
-  -> bounded context
-  -> typed evidence
-  -> planner model
-  -> schema validation
-  -> allowed-action filter
-  -> deterministic candidate scoring
-  -> independent critic model
-  -> deterministic reviewed score
-  -> durable DecisionJournal entry
-  -> abstain OR selected candidate
-  -> Instagram adapter creates PENDING PlannedAction
-  -> human/policy approval
-  -> AutomationService
-  -> provider
-  -> durable outcome
-  -> ExperienceStore feedback
-```
+![InstabotAI authority and execution architecture](screenshots/architecture-flow.svg)
+
+The important boundary is intentional: model reasoning produces a reviewed proposal and durable decision record, while write authority remains outside the model. Campaign scheduling, approval, policy, quota reservation, idempotency, and provider execution remain separate authorities.
 
 ## Model providers
 
@@ -116,7 +106,7 @@ Historical reward is deliberately bounded. Prior outcomes can improve or weaken 
 
 The journal stores the complete validated `IntelligenceDecision` JSON plus indexed operational fields. It can retrieve one decision by ID or return a bounded newest-first audit feed. Duplicate decision IDs are rejected rather than overwritten.
 
-The `instabotai decisions` CLI command exposes this audit feed without touching the execution system.
+Both the `instabotai decisions` CLI command and the consumer console's **Decision Audit** workspace expose this durable history without becoming execution authorities.
 
 ## Context discipline and prompt-injection containment
 
@@ -136,7 +126,9 @@ Credentials are handled only by provider adapters and runtime settings. They are
 
 The generic research crawler remains separate from Instagram account access. Platform account operations continue through explicit provider adapters.
 
-## Operator surface
+Consumer-trial readiness is also separate from AI authority. `ConsumerTrialReadinessService` may prove configuration, durable state, optional research support, live model connectivity, and read-only provider connectivity, but `ready=true` never grants a write. Approval, policy, quota, idempotency, campaign state, and provider capability checks still control execution.
+
+## Operator surfaces
 
 `instabotai doctor` reports the configured AI provider, model, endpoint, critic state, decision threshold, and whether an API key is configured without printing the secret. It is a configuration check, not proof that a model server is reachable.
 
@@ -146,12 +138,18 @@ The generic research crawler remains separate from Instagram account access. Pla
 
 `instabotai decisions --limit 25` displays recent journaled AI decisions and abstentions for operational inspection.
 
+`instabotai trial-readiness --live` performs a genuine model probe plus a read-only provider probe while remaining outside the write path.
+
+The consumer console's **AI Studio** uses the same intelligence authority as the CLI. It exposes typed evidence, bounded context, planner + critic execution, scores, abstention state, stable decision IDs, provider/model identity, critic objections, uncertainty, and pending-action inspection. Planning in AI Studio does not execute Instagram writes.
+
 An optional `--context-file` accepts a bounded JSON object for account, campaign, or product context.
 
 ## Campaign integration
 
-The campaign and scheduler layer should consume `IntelligenceEngine` rather than implement a second reasoning path. Its responsibility is to gather current campaign state, research evidence, account observations, resource constraints, and recent outcomes, then ask the intelligence engine for a decision. The scheduler may queue only the resulting pending action and must preserve the approval/policy boundary before execution.
+The implemented campaign and scheduler layer consumes `IntelligenceEngine`; it does not maintain a second reasoning path. `CampaignRuntime` gathers current campaign state, typed evidence, optional research, context, and prior outcomes, then asks the canonical intelligence engine for a decision. The durable decision ID is propagated into campaign jobs so execution and observed outcomes can be traced back to the exact reasoning record.
 
-The durable decision ID should be propagated into scheduled work and execution audit metadata so campaign outcomes can be traced back to the exact reasoning record that produced them.
+Only the resulting pending action can become durable campaign work. Supervised jobs wait for explicit approval. Executable jobs then flow through `AutomationService`, `AutomationPolicy`, transactional quota reservation, `ActionLedger` idempotency, and the selected Instagram provider.
 
-This keeps one canonical intelligence system and one canonical write system as the product expands beyond the initial Instagram workflow.
+Provider success is not automatically treated as business success. `ExperienceStore` receives campaign reward only after an explicit observed outcome is recorded.
+
+This preserves one canonical intelligence system, one canonical readiness authority, and one canonical write system as the product expands beyond the initial Instagram workflow.

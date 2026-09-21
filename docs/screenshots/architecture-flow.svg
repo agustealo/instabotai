@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">InstabotAI architecture and authority flow</title>
+  <desc id="desc">Evidence and public research flow into the intelligence engine, then through deterministic review, durable campaign state, approval, policy, quota and idempotency controls, the Instagram provider, and explicit outcome learning. AI cannot self-authorize writes.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#090b10"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.32"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6f7a8c"/>
+    </marker>
+    <style>
+      .h1{font:700 34px Inter,system-ui,sans-serif;fill:#f5f7fb}.sub{font:400 16px Inter,system-ui,sans-serif;fill:#9aa4b5}.label{font:700 16px Inter,system-ui,sans-serif;fill:#f5f7fb}.small{font:400 13px Inter,system-ui,sans-serif;fill:#9aa4b5}.tiny{font:700 12px Inter,system-ui,sans-serif;fill:#c4b5fd;letter-spacing:.08em}.box{fill:#171c26;stroke:#ffffff24;stroke-width:1.5}.control{fill:#111827;stroke:#8b5cf688;stroke-width:1.6}.safe{fill:#102219;stroke:#4ade8066;stroke-width:1.5}.warn{fill:#281922;stroke:#fb718566;stroke-width:1.5}.line{stroke:#6f7a8c;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1400" height="900" rx="28" fill="url(#bg)"/>
+  <rect x="36" y="34" width="1328" height="832" rx="24" fill="#0f131acc" stroke="#ffffff12"/>
+  <text x="78" y="92" class="h1">InstabotAI authority flow</text>
+  <text x="78" y="122" class="sub">Real model reasoning, durable state, and policy-governed execution through one canonical path.</text>
+
+  <g filter="url(#shadow)">
+    <rect class="box" x="80" y="180" width="250" height="96" rx="16"/>
+    <text x="104" y="214" class="tiny">INPUT</text>
+    <text x="104" y="240" class="label">Operator evidence</text>
+    <text x="104" y="261" class="small">typed IDs · confidence · context</text>
+
+    <rect class="box" x="80" y="316" width="250" height="96" rx="16"/>
+    <text x="104" y="350" class="tiny">OPTIONAL RESEARCH</text>
+    <text x="104" y="376" class="label">AdaptiveResearch</text>
+    <text x="104" y="397" class="small">Crawl4AI · hardened public egress</text>
+
+    <rect class="control" x="410" y="225" width="280" height="142" rx="18"/>
+    <text x="438" y="260" class="tiny">MODEL SUBSYSTEM</text>
+    <text x="438" y="290" class="label">IntelligenceEngine</text>
+    <text x="438" y="316" class="small">planner inference + independent critic</text>
+    <text x="438" y="339" class="small">typed schema · action vocabulary</text>
+
+    <rect class="control" x="770" y="225" width="260" height="142" rx="18"/>
+    <text x="798" y="260" class="tiny">NON-MODEL AUTHORITY</text>
+    <text x="798" y="290" class="label">Deterministic review</text>
+    <text x="798" y="316" class="small">evidence · utility · history · risk</text>
+    <text x="798" y="339" class="small">threshold + critic adjudication</text>
+
+    <rect class="box" x="1100" y="225" width="220" height="142" rx="18"/>
+    <text x="1128" y="260" class="tiny">AUDIT</text>
+    <text x="1128" y="290" class="label">DecisionJournal</text>
+    <text x="1128" y="316" class="small">stable decision ID</text>
+    <text x="1128" y="339" class="small">selected action or abstention</text>
+
+    <rect class="box" x="1030" y="455" width="290" height="130" rx="18"/>
+    <text x="1058" y="490" class="tiny">DURABLE ORCHESTRATION</text>
+    <text x="1058" y="520" class="label">CampaignStore + Runtime</text>
+    <text x="1058" y="546" class="small">schedule · leases · retries · job state</text>
+    <text x="1058" y="567" class="small">pending approval by default</text>
+
+    <rect class="safe" x="665" y="455" width="285" height="130" rx="18"/>
+    <text x="693" y="490" class="tiny">WRITE CONTROL</text>
+    <text x="693" y="520" class="label">Approval + AutomationPolicy</text>
+    <text x="693" y="546" class="small">human/policy approval · capabilities</text>
+    <text x="693" y="567" class="small">daily limits remain external to AI</text>
+
+    <rect class="safe" x="330" y="455" width="255" height="130" rx="18"/>
+    <text x="358" y="490" class="tiny">TRANSACTIONAL GUARD</text>
+    <text x="358" y="520" class="label">ActionLedger</text>
+    <text x="358" y="546" class="small">quota reservation · idempotency</text>
+    <text x="358" y="567" class="small">ambiguous writes fail closed</text>
+
+    <rect class="box" x="80" y="455" width="190" height="130" rx="18"/>
+    <text x="106" y="490" class="tiny">EXECUTION</text>
+    <text x="106" y="520" class="label">Instagram provider</text>
+    <text x="106" y="546" class="small">official Graph API</text>
+    <text x="106" y="567" class="small">or optional private adapter</text>
+
+    <rect class="box" x="370" y="680" width="290" height="112" rx="18"/>
+    <text x="398" y="715" class="tiny">OBSERVED RESULT</text>
+    <text x="398" y="744" class="label">Explicit business outcome</text>
+    <text x="398" y="770" class="small">provider success ≠ business success</text>
+
+    <rect class="control" x="760" y="680" width="270" height="112" rx="18"/>
+    <text x="788" y="715" class="tiny">BOUNDED LEARNING</text>
+    <text x="788" y="744" class="label">ExperienceStore</text>
+    <text x="788" y="770" class="small">relevance-weighted historical prior</text>
+  </g>
+
+  <path class="line" d="M330 228 C365 228 374 260 410 260"/>
+  <path class="line" d="M330 364 C365 364 374 332 410 332"/>
+  <path class="line" d="M690 296 L770 296"/>
+  <path class="line" d="M1030 296 L1100 296"/>
+  <path class="line" d="M1210 367 L1210 455"/>
+  <path class="line" d="M1030 520 L950 520"/>
+  <path class="line" d="M665 520 L585 520"/>
+  <path class="line" d="M330 520 L270 520"/>
+  <path class="line" d="M175 585 C175 652 370 650 430 680"/>
+  <path class="line" d="M660 736 L760 736"/>
+  <path class="line" d="M895 680 C895 626 550 620 550 367"/>
+
+  <rect class="warn" x="1090" y="665" width="230" height="127" rx="18"/>
+  <text x="1118" y="703" class="tiny">HARD BOUNDARY</text>
+  <text x="1118" y="732" class="label">AI cannot self-authorize</text>
+  <text x="1118" y="757" class="small">No model output can bypass approval,</text>
+  <text x="1118" y="778" class="small">policy, quota, idempotency, or provider controls.</text>
+
+  <rect x="76" y="830" width="1248" height="2" fill="url(#accent)" opacity=".72"/>
+</svg>

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="720" viewBox="0 0 1400 720" role="img" aria-labelledby="title desc">
+  <title id="title">InstabotAI consumer-trial readiness flow</title>
+  <desc id="desc">Static local readiness checks verify runtime, durable SQLite state, AI and Instagram configuration, research capability, write approval, and bounded capacity. Optional live checks then perform a genuine AI reasoning probe and read-only Instagram profile request. Required failures block consumer-trial readiness.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#090b10"/><stop offset="1" stop-color="#111827"/></linearGradient>
+    <linearGradient id="bar" x1="0" x2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6f7a8c"/></marker>
+    <style>
+      .h1{font:700 34px Inter,system-ui,sans-serif;fill:#f5f7fb}.sub{font:400 16px Inter,system-ui,sans-serif;fill:#9aa4b5}.cap{font:700 12px Inter,system-ui,sans-serif;fill:#c4b5fd;letter-spacing:.09em}.label{font:700 16px Inter,system-ui,sans-serif;fill:#f5f7fb}.small{font:400 13px Inter,system-ui,sans-serif;fill:#9aa4b5}.box{fill:#171c26;stroke:#ffffff24;stroke-width:1.5}.pass{fill:#102219;stroke:#4ade8066;stroke-width:1.5}.warn{fill:#2a2414;stroke:#fbbf2466;stroke-width:1.5}.fail{fill:#281922;stroke:#fb718566;stroke-width:1.5}.live{fill:#151a2b;stroke:#60a5fa77;stroke-width:1.5}.line{stroke:#6f7a8c;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1400" height="720" rx="28" fill="url(#bg)"/>
+  <rect x="36" y="34" width="1328" height="652" rx="24" fill="#0f131acc" stroke="#ffffff12"/>
+  <text x="78" y="92" class="h1">Consumer-trial readiness</text>
+  <text x="78" y="122" class="sub">One typed authority drives the CLI and consumer console. Static checks never contact external providers.</text>
+
+  <rect class="box" x="70" y="185" width="260" height="330" rx="20"/>
+  <text x="96" y="222" class="cap">STATIC GATE</text>
+  <text x="96" y="252" class="label">Local, secret-free checks</text>
+  <text x="96" y="291" class="small">✓ installed package + entrypoint</text>
+  <text x="96" y="322" class="small">✓ durable SQLite integrity + write</text>
+  <text x="96" y="353" class="small">✓ AI provider/model/base URL</text>
+  <text x="96" y="384" class="small">✓ selected provider credentials</text>
+  <text x="96" y="415" class="small">✓ research extra optional/required</text>
+  <text x="96" y="446" class="small">✓ global write approval enabled</text>
+  <text x="96" y="477" class="small">✓ bounded non-zero write capacity</text>
+
+  <rect class="live" x="440" y="217" width="290" height="130" rx="18"/>
+  <text x="468" y="252" class="cap">OPTIONAL LIVE PROBE</text>
+  <text x="468" y="281" class="label">Reasoning model</text>
+  <text x="468" y="307" class="small">genuine structured model round trip</text>
+  <text x="468" y="328" class="small">provider · model · latency</text>
+
+  <rect class="live" x="440" y="385" width="290" height="130" rx="18"/>
+  <text x="468" y="420" class="cap">OPTIONAL LIVE PROBE</text>
+  <text x="468" y="449" class="label">Instagram account read</text>
+  <text x="468" y="475" class="small">real read-only profile request</text>
+  <text x="468" y="496" class="small">never performs a write</text>
+
+  <rect class="box" x="840" y="270" width="245" height="190" rx="20"/>
+  <text x="868" y="307" class="cap">CANONICAL REPORT</text>
+  <text x="868" y="337" class="label">ConsumerTrialReadiness</text>
+  <text x="868" y="374" class="small">pass · warn · fail · skip</text>
+  <text x="868" y="402" class="small">blockers + warnings</text>
+  <text x="868" y="430" class="small">no secret values serialized</text>
+
+  <rect class="pass" x="1170" y="215" width="165" height="120" rx="18"/>
+  <text x="1198" y="252" class="cap">READY</text>
+  <text x="1198" y="282" class="label">No required fails</text>
+  <text x="1198" y="308" class="small">trial may proceed</text>
+
+  <rect class="fail" x="1170" y="397" width="165" height="120" rx="18"/>
+  <text x="1198" y="434" class="cap">BLOCKED</text>
+  <text x="1198" y="464" class="label">Required fail</text>
+  <text x="1198" y="490" class="small">fix owning boundary</text>
+
+  <rect class="warn" x="440" y="565" width="645" height="72" rx="16"/>
+  <text x="468" y="594" class="label">Readiness does not grant write authority.</text>
+  <text x="468" y="619" class="small">Campaign state, approval, policy, quota, idempotency, and provider controls remain separate execution authorities.</text>
+
+  <path class="line" d="M330 350 L410 350 L410 282 L440 282"/>
+  <path class="line" d="M410 350 L410 450 L440 450"/>
+  <path class="line" d="M730 282 C785 282 790 340 840 340"/>
+  <path class="line" d="M730 450 C785 450 790 390 840 390"/>
+  <path class="line" d="M1085 340 C1125 340 1125 275 1170 275"/>
+  <path class="line" d="M1085 390 C1125 390 1125 457 1170 457"/>
+
+  <rect x="76" y="658" width="1248" height="2" fill="url(#bar)" opacity=".72"/>
+</svg>

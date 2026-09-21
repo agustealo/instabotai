@@ -43,6 +43,49 @@ jobs:
       - name: Pytest
         run: python -m pytest
 
+      - name: Documentation visual references
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+          from urllib.parse import unquote
+
+          root = Path.cwd().resolve()
+          markdown_files = [root / "README.md", *sorted((root / "docs").glob("*.md"))]
+          markdown_image = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+          html_image = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.IGNORECASE)
+          failures: list[str] = []
+          checked = 0
+
+          for markdown in markdown_files:
+              text = markdown.read_text(encoding="utf-8")
+              refs = markdown_image.findall(text) + html_image.findall(text)
+              for raw_ref in refs:
+                  ref = raw_ref.strip().split()[0].strip("<>")
+                  if ref.startswith(("http://", "https://", "data:", "#")):
+                      continue
+                  ref = unquote(ref.split("#", 1)[0].split("?", 1)[0])
+                  if not ref:
+                      continue
+                  asset = (markdown.parent / ref).resolve()
+                  try:
+                      asset.relative_to(root)
+                  except ValueError:
+                      failures.append(f"{markdown.relative_to(root)}: image escapes repository: {raw_ref}")
+                      continue
+                  checked += 1
+                  if not asset.is_file():
+                      failures.append(f"{markdown.relative_to(root)}: missing image: {raw_ref}")
+                  elif asset.stat().st_size == 0:
+                      failures.append(f"{markdown.relative_to(root)}: empty image: {raw_ref}")
+
+          if failures:
+              raise SystemExit("\n".join(failures))
+          print(f"Verified {checked} local documentation image references.")
+          PY
+
       - name: Package smoke
         run: |
           instabotai doctor

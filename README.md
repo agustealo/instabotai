@@ -18,7 +18,8 @@ Implemented today:
 - canonical `AutomationService`, policy engine, transactional daily quotas, and durable idempotency;
 - durable campaign scheduler, approval queue, ownership leases, bounded retries, and explicit outcome learning;
 - CLI and local-first FastAPI consumer console;
-- exact-head Ruff, strict mypy, pytest, package, Docker, and live-console gates.
+- canonical static/live consumer-trial readiness authority shared by CLI and GUI;
+- exact-head Ruff, strict mypy, pytest, wheel, Docker, readiness, and live-console gates.
 
 The alpha should still be operated under supervision while authenticated provider behavior is validated during consumer trials. AI output is never write authority.
 
@@ -32,9 +33,13 @@ instabotai ui
 
 The console binds to `127.0.0.1:8765` by default. A non-loopback bind is rejected unless `INSTABOTAI_UI_ALLOW_REMOTE=true` is deliberately configured.
 
+![InstabotAI consumer console Overview](docs/screenshots/consumer-console-overview.png)
+
+> **Real product capture.** This Overview image was produced by the packaged application itself in GitHub Actions, not by a mock or design file. The reproducible capture path is `.github/workflows/docs-visual-capture.yml`; capture provenance is recorded in [docs/PRODUCT_SURFACES.md](docs/PRODUCT_SURFACES.md).
+
 The GUI uses the same canonical application/runtime authorities as the CLI. Shipped surfaces are:
 
-- **Overview**: secret-free runtime, AI/provider, research, scheduler, and policy readiness.
+- **Overview**: secret-free runtime plus the canonical static/live consumer-trial readiness report.
 - **AI Studio**: live model probe, typed evidence, bounded context, planner + critic execution, scores, abstention, and pending-action inspection.
 - **Campaigns**: campaign creation/lifecycle, supervised or policy-managed mode, cadence/delay, optional research-before-plan, approval/rejection, controlled execution, retry/error/provider inspection, idempotency inspection, and explicit business-outcome feedback.
 - **Decision Audit**: durable `DecisionJournal` browsing and filtering.
@@ -55,63 +60,11 @@ Provider success is not automatically business success. AI learning receives cam
 
 ## Architecture
 
-```text
-Public-web sources                 Operator / product evidence
-       |                                      |
-       v                                      v
-+------------------+                 +-------------------+
-| AdaptiveResearch |                 | Typed evidence    |
-| Crawl4AI         |                 | bounded context   |
-+--------+---------+                 +---------+---------+
-         |                                     |
-         +------------------+------------------+
-                            v
-                   +-------------------+
-                   | IntelligenceEngine|
-                   | planner + critic  |
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | validation +      |
-                   | deterministic     |
-                   | adjudication      |
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | DecisionJournal   |
-                   | stable decision ID|
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | abstain OR        |
-                   | PlannedAction     |
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | CampaignStore     |
-                   | schedule / lease  |
-                   | approval / retry  |
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | AutomationService |
-                   | policy + limits   |
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | ActionLedger      |
-                   | quota/idempotency |
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | Instagram provider|
-                   +---------+---------+
-                             v
-                   +-------------------+
-                   | explicit outcome  |
-                   | ExperienceStore   |
-                   +-------------------+
-```
+![InstabotAI architecture and authority flow](docs/screenshots/architecture-flow.svg)
+
+The model is deliberately boxed in by non-model authorities. Evidence and optional public-web research feed `IntelligenceEngine`; model output is validated and deterministically adjudicated, journaled, persisted into durable campaign state, and can reach a provider only through approval, policy, quota, and idempotency controls. Explicit observed outcomes, not provider success alone, feed bounded future learning.
+
+See [docs/INTELLIGENCE_ARCHITECTURE.md](docs/INTELLIGENCE_ARCHITECTURE.md) for scoring, prompt-injection containment, model-provider contracts, and decision-journal details.
 
 ## Genuine intelligence authority
 
@@ -128,7 +81,26 @@ Every finalized decision or abstention receives a stable `decision_id`. AI-selec
 
 `ExperienceStore` receives only explicit observed business outcomes and contributes a bounded relevance-weighted prior to later decisions. Historical reward cannot replace current evidence or policy.
 
-See [docs/INTELLIGENCE_ARCHITECTURE.md](docs/INTELLIGENCE_ARCHITECTURE.md).
+## Consumer-trial readiness
+
+The CLI and Overview share one `ConsumerTrialReadinessService` rather than separate checklists.
+
+```bash
+# Local/static checks: package, durable state, configuration and guardrails
+instabotai trial-readiness
+
+# Add genuine model inference + read-only Instagram profile probes
+instabotai trial-readiness --live
+
+# Treat Crawl4AI support as required for this trial profile
+instabotai trial-readiness --require-research
+```
+
+![InstabotAI consumer-trial readiness flow](docs/screenshots/consumer-trial-readiness.svg)
+
+Static readiness rejects transient `:memory:` state for trials, validates selected-provider credentials, checks the research extra according to the selected trial profile, requires the global write-approval guardrail, and verifies bounded non-zero write capacity. Live mode adds a genuine model round trip and a real read-only provider profile request. Readiness never grants write authority.
+
+See [docs/CONSUMER_TRIAL_READINESS.md](docs/CONSUMER_TRIAL_READINESS.md).
 
 ## Durable campaigns and worker
 
@@ -216,6 +188,9 @@ Extras can be combined, for example `.[private,research,dev]`.
 # GUI
 instabotai ui
 
+# Consumer-trial gate
+instabotai trial-readiness
+
 # Secret-free runtime diagnostics
 instabotai doctor
 
@@ -297,7 +272,7 @@ export INSTABOTAI_PRIVATE_INSTAGRAM_USERNAME='...'
 export INSTABOTAI_PRIVATE_INSTAGRAM_PASSWORD='...'
 ```
 
-Install `.[private]` before using that backend.
+Install `.[private]` before using that backend. Authorized research-mode credential bundles are also supported; see the readiness and provider documentation rather than duplicating secrets into repository files.
 
 ## Consumer/API security
 
@@ -307,41 +282,33 @@ See [SECURITY.md](SECURITY.md) for the network, credential, write-retry, and ide
 
 ## Development gates
 
-The canonical gate runs:
+The canonical gate runs lint, strict typing, the complete test suite, installed-package smoke, clean-wheel readiness smoke, Docker build/runtime readiness smoke, and live consumer-console health verification.
 
-```bash
-python -m ruff check instabotai tests
-python -m mypy instabotai
-python -m pytest
-instabotai doctor
-docker build -t instabotai-ci .
-docker run --rm instabotai-ci doctor
-```
-
-It also creates the FastAPI app, parses shipped JavaScript through Node when available, boots the packaged consumer console inside Docker, and requires its live `/healthz` endpoint to respond successfully.
-
-Security-hardening code was proven on `61bb6cd6ae0b5411723a3f4b04e4b63fd7e43596` by Quality Gate #135:
+Consumer-trial readiness code was proven on exact candidate `12f93f1d5647ff173c19fb3dd88d94a1ca425638` by Quality Gate #153 before merge to `master@d7181ed4eb957538a2a3c93453dcd54d416e9b5c`:
 
 - Ruff green;
-- strict mypy green across 26 production files;
-- **53 tests passed in 7.29s**;
-- SSRF/DNS/redirect regressions green;
-- safe-read retry and single-dispatch POST regressions green;
-- ambiguous-write replay/quota regressions green;
+- strict mypy green across 27 production source files;
+- **66 tests passed**;
 - package smoke green;
-- Docker build/runtime and consumer `/healthz` green.
+- clean-wheel install + `trial-readiness` green;
+- Docker build + `doctor` + `trial-readiness` green;
+- containerized consumer-console `/healthz` green.
 
-The newest exact-head workflow and PR description remain authoritative if documentation-only commits advance the branch after this code baseline.
+The newest exact-head workflow and PR description remain authoritative if later documentation or code commits advance the branch.
 
 ## Verified product surfaces
 
 Repository screenshots must come from real product/runtime evidence, never mocked success states.
 
-![InstabotAI packaged runtime diagnostics](docs/screenshots/runtime-doctor.svg)
+| Visual | What it proves |
+| --- | --- |
+| ![Consumer console Overview](docs/screenshots/consumer-console-overview.png) | The current packaged consumer UI boots and renders its real Overview/readiness surface. |
+| ![InstabotAI packaged runtime diagnostics](docs/screenshots/runtime-doctor.svg) | Secret-free packaged runtime/config diagnostics. |
+| ![InstabotAI quality gate](docs/screenshots/quality-gate.svg) | Release-gate evidence for the documented validation baseline. |
+| ![InstabotAI architecture flow](docs/screenshots/architecture-flow.svg) | Canonical reasoning, durable state, write-control, provider, and learning boundaries. |
+| ![InstabotAI readiness flow](docs/screenshots/consumer-trial-readiness.svg) | Static/live readiness ownership and the separation from write authority. |
 
-![InstabotAI quality gate](docs/screenshots/quality-gate.svg)
-
-See [docs/PRODUCT_SURFACES.md](docs/PRODUCT_SURFACES.md) for the operator/evidence matrix and screenshot policy.
+See [docs/PRODUCT_SURFACES.md](docs/PRODUCT_SURFACES.md) for provenance, the operator/evidence matrix, and screenshot policy.
 
 ## Project direction
 
