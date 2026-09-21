@@ -1,20 +1,22 @@
 """Optional unofficial Instagram provider backed by instagrapi.
 
-This adapter exists for users who want a quick-start path without Meta app
-registration. It remains isolated behind the canonical automation policy and
-action ledger. It does not attempt to bypass challenges, throttles, or account
-safety responses.
+The adapter supports an explicit research mode for authorized testing. Research
+mode can load local operator-owned credentials and client settings, override
+common device/request attributes, and record sanitized request metadata. It does
+not automate defeating Instagram security, challenge, or anti-abuse controls.
 """
 
 from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
 import socket
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -41,7 +43,10 @@ class PrivateInstagramProvider:
             return dict(account.model_dump(mode="json"))
         if hasattr(account, "dict"):
             return dict(account.dict())
-        return {"username": str(getattr(account, "username", "")), "pk": str(getattr(account, "pk", ""))}
+        return {
+            "username": str(getattr(account, "username", "")),
+            "pk": str(getattr(account, "pk", "")),
+        }
 
     async def publish_image(self, image_url: str, caption: str = "") -> str:
         client = await self._ready_client()
@@ -84,7 +89,8 @@ class PrivateInstagramProvider:
 
     async def hide_comment(self, comment_id: str, *, hide: bool = True) -> bool:
         raise PrivateInstagramProviderError(
-            "comment hide/unhide is not exposed by the selected private provider; use the official provider"
+            "comment hide/unhide is not exposed by the selected private provider; "
+            "use the official provider"
         )
 
     async def _ready_client(self) -> Any:
@@ -98,14 +104,6 @@ class PrivateInstagramProvider:
             return self._client
 
     def _login_sync(self) -> Any:
-        username = (self._settings.private_instagram_username or "").strip()
-        password_secret = self._settings.private_instagram_password
-        if not username or password_secret is None:
-            raise PrivateInstagramProviderError(
-                "private provider requires INSTABOTAI_PRIVATE_INSTAGRAM_USERNAME and "
-                "INSTABOTAI_PRIVATE_INSTAGRAM_PASSWORD"
-            )
-
         try:
             from instagrapi import Client
         except ImportError as exc:
@@ -113,30 +111,190 @@ class PrivateInstagramProvider:
                 "private provider is not installed; install instabotai[private]"
             ) from exc
 
-        session_path = Path(self._settings.private_session_path).expanduser()
+        bundle = self._credential_bundle()
+        username = str(
+            self._settings.private_instagram_username or bundle.get("username") or ""
+        ).strip()
+        password = self._secret_or_bundle(
+            self._settings.private_instagram_password,
+            bundle,
+            "password",
+        )
+        if not username or not password:
+            raise PrivateInstagramProviderError(
+                "private provider requires username/password via environment or the "
+                "authorized research credential bundle"
+            )
+
+        session_path = Path(
+            str(bundle.get("session_path") or self._settings.private_session_path)
+        ).expanduser()
         session_path.parent.mkdir(parents=True, exist_ok=True)
         client = Client()
-        proxy = self._settings.private_proxy_url
-        if proxy is not None:
-            client.set_proxy(proxy.get_secret_value())
+
         if session_path.exists():
             client.load_settings(session_path)
 
+        proxy = self._secret_or_bundle(
+            self._settings.private_proxy_url,
+            bundle,
+            "proxy_url",
+        )
+        if proxy:
+            client.set_proxy(proxy)
+
+        if self._settings.private_research_mode:
+            self._configure_research_client(client, bundle)
+
         try:
-            ok = client.login(username, password_secret.get_secret_value())
+            ok = client.login(username, password)
         except Exception as exc:
             raise PrivateInstagramProviderError(
-                f"private login failed; resolve Instagram verification/challenge normally: {exc}"
+                "private login failed; preserve the same session/device context and complete "
+                f"any Instagram verification flow normally: {exc}"
             ) from exc
         if not ok:
             raise PrivateInstagramProviderError("private login was not accepted")
 
         client.dump_settings(session_path)
+        self._restrict_file(session_path)
+        return client
+
+    def _configure_research_client(self, client: Any, bundle: dict[str, Any]) -> None:
+        device_file = self._settings.private_device_profile_file or self._bundle_text(
+            bundle,
+            "device_profile_file",
+        )
+        if device_file:
+            device = self._load_json_object(Path(device_file).expanduser(), "device profile")
+            client.set_device(device)
+
+        user_agent = self._settings.private_user_agent or self._bundle_text(
+            bundle,
+            "user_agent",
+        )
+        if user_agent:
+            client.set_user_agent(user_agent)
+
+        headers_file = self._settings.private_headers_file or self._bundle_text(
+            bundle,
+            "headers_file",
+        )
+        if headers_file:
+            headers = self._load_json_object(Path(headers_file).expanduser(), "headers")
+            client.private.headers.update({str(k): str(v) for k, v in headers.items()})
+
+        phone_number = self._settings.private_phone_number or self._bundle_text(
+            bundle,
+            "phone_number",
+        )
+        if phone_number:
+            client.phone_number = phone_number
+
+        challenge_code = self._secret_or_bundle(
+            self._settings.private_challenge_code,
+            bundle,
+            "challenge_code",
+        )
+        if challenge_code:
+            client.challenge_code_handler = lambda _username, _choice: challenge_code
+
+        replacement_password = self._secret_or_bundle(
+            self._settings.private_replacement_password,
+            bundle,
+            "replacement_password",
+        )
+        if replacement_password:
+            client.change_password_handler = lambda _username: replacement_password
+
+        trace_path = self._settings.private_request_trace_path or self._bundle_text(
+            bundle,
+            "request_trace_path",
+        )
+        if trace_path:
+            self._attach_request_trace(client, Path(trace_path).expanduser())
+
+    def _credential_bundle(self) -> dict[str, Any]:
+        path_value = self._settings.private_credentials_file
+        if not path_value:
+            return {}
+        if not self._settings.private_research_mode:
+            raise PrivateInstagramProviderError(
+                "private credential files require INSTABOTAI_PRIVATE_RESEARCH_MODE=true"
+            )
+        return self._load_json_object(Path(path_value).expanduser(), "credential bundle")
+
+    @staticmethod
+    def _load_json_object(path: Path, label: str) -> dict[str, Any]:
         try:
-            session_path.chmod(0o600)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise PrivateInstagramProviderError(f"could not load {label} from {path}: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise PrivateInstagramProviderError(f"{label} must contain a JSON object")
+        return raw
+
+    @staticmethod
+    def _bundle_text(bundle: dict[str, Any], key: str) -> str | None:
+        value = bundle.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise PrivateInstagramProviderError(f"credential bundle field {key!r} must be text")
+        return value.strip() or None
+
+    def _secret_or_bundle(
+        self,
+        secret: Any,
+        bundle: dict[str, Any],
+        key: str,
+    ) -> str | None:
+        if secret is not None:
+            return str(secret.get_secret_value())
+        return self._bundle_text(bundle, key)
+
+    def _attach_request_trace(self, client: Any, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        original = client.request_log
+
+        def traced(response: Any) -> None:
+            original(response)
+            request = getattr(response, "request", None)
+            record = {
+                "at": datetime.now(UTC).isoformat(),
+                "method": str(getattr(request, "method", "")),
+                "url": self._sanitize_url(str(getattr(response, "url", ""))),
+                "status": int(getattr(response, "status_code", 0) or 0),
+            }
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, sort_keys=True) + "\n")
+            self._restrict_file(path)
+
+        client.request_log = traced
+
+    @staticmethod
+    def _sanitize_url(value: str) -> str:
+        parsed = urlparse(value)
+        sensitive = {
+            "access_token",
+            "token",
+            "password",
+            "sessionid",
+            "csrftoken",
+            "authorization",
+        }
+        query = [
+            (key, "[redacted]" if key.lower() in sensitive else val)
+            for key, val in parse_qsl(parsed.query, keep_blank_values=True)
+        ]
+        return urlunparse(parsed._replace(query=urlencode(query)))
+
+    @staticmethod
+    def _restrict_file(path: Path) -> None:
+        try:
+            path.chmod(0o600)
         except OSError:
             pass
-        return client
 
     async def _download_image(self, image_url: str) -> Path:
         await self._assert_public_http_url(image_url)
@@ -151,15 +309,17 @@ class PrivateInstagramProvider:
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
                 if content_type not in {"image/jpeg", "image/jpg"}:
                     raise PrivateInstagramProviderError(
-                        f"private photo publishing requires JPEG; received {content_type or 'unknown'}"
+                        f"private photo publishing requires JPEG; "
+                        f"received {content_type or 'unknown'}"
                     )
-                suffix = ".jpg"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as handle:
                     size = 0
                     async for chunk in response.aiter_bytes():
                         size += len(chunk)
                         if size > self._settings.private_image_max_bytes:
-                            raise PrivateInstagramProviderError("image exceeds configured download size limit")
+                            raise PrivateInstagramProviderError(
+                                "image exceeds configured download size limit"
+                            )
                         handle.write(chunk)
                     return Path(handle.name)
 
@@ -173,7 +333,13 @@ class PrivateInstagramProvider:
             raise PrivateInstagramProviderError("local image hosts are not allowed")
 
         def resolve() -> list[str]:
-            return list({item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)})
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            return list(
+                {
+                    item[4][0]
+                    for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+                }
+            )
 
         try:
             addresses = await asyncio.to_thread(resolve)

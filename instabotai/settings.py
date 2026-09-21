@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     private_proxy_url: SecretStr | None = None
     private_image_max_bytes: int = Field(default=15_000_000, ge=100_000, le=50_000_000)
 
+    # Authorized lab/research controls. These expose supported client knobs and
+    # local operator-supplied state. They do not implement platform-control bypasses.
+    private_research_mode: bool = False
+    private_credentials_file: str | None = None
+    private_device_profile_file: str | None = None
+    private_headers_file: str | None = None
+    private_user_agent: str | None = None
+    private_challenge_code: SecretStr | None = None
+    private_replacement_password: SecretStr | None = None
+    private_phone_number: str | None = None
+    private_request_trace_path: str | None = None
+
     research_user_agent: str = (
         "InstabotAI/2.0 (+https://github.com/agustealo/instabotai; compliant-public-web-research)"
     )
