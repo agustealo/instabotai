@@ -69,7 +69,8 @@ class AutomationPolicy:
     def _check_limit(self, action_type: ActionType, usage: UsageSnapshot) -> PolicyDecision:
         if action_type is ActionType.PUBLISH_IMAGE:
             allowed = usage.published_today < self._settings.daily_publish_limit
-            return PolicyDecision(allowed, "daily publish limit reached" if not allowed else "allowed")
+            reason = "daily publish limit reached" if not allowed else "allowed"
+            return PolicyDecision(allowed, reason)
 
         if action_type is ActionType.REPLY_TO_COMMENT:
             allowed = usage.comment_replies_today < self._settings.daily_comment_reply_limit
