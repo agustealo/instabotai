@@ -4,7 +4,6 @@ import pathlib
 import re
 import tomllib
 
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 PINNED_ACTIONS = {
