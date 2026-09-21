@@ -12,7 +12,7 @@ from instabotai.domain import ActionType, PlannedAction, UsageSnapshot
 
 
 class DuplicateActionError(RuntimeError):
-    """Raised when an idempotency key has already been reserved."""
+    """Raised when an idempotency key has already been reserved or cannot be replayed."""
 
 
 class DailyLimitExceededError(RuntimeError):
@@ -35,7 +35,8 @@ class ActionLedger:
         """Reserve an action atomically.
 
         A previously failed reservation may be retried only when the stored immutable action
-        identity still matches exactly. Reserved and succeeded rows remain non-replayable.
+        identity still matches exactly and the prior failure was explicitly retryable.
+        Reserved, succeeded, and ambiguous non-retryable rows remain non-replayable.
         """
 
         payload = json.dumps(action.payload, sort_keys=True, separators=(",", ":"))
@@ -46,24 +47,31 @@ class ActionLedger:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 """
-                SELECT action_type, target_id, status, payload_json
+                SELECT action_type, target_id, status, payload_json, retryable
                 FROM automation_actions
                 WHERE idempotency_key = ?
                 """,
                 (action.idempotency_key,),
             ).fetchone()
 
-            if existing is not None and str(existing["status"]) != "failed":
-                raise DuplicateActionError(
-                    f"action already exists for idempotency key {action.idempotency_key!r}"
-                )
+            if existing is not None:
+                status = str(existing["status"])
+                retryable = bool(existing["retryable"])
+                if status != "failed" or not retryable:
+                    raise DuplicateActionError(
+                        f"action cannot be replayed for idempotency key "
+                        f"{action.idempotency_key!r}"
+                    )
 
             count_row = connection.execute(
                 """
                 SELECT COUNT(*) AS action_count
                 FROM automation_actions
                 WHERE action_type = ?
-                  AND status IN ('reserved', 'succeeded')
+                  AND (
+                      status IN ('reserved', 'succeeded')
+                      OR (status = 'failed' AND retryable = 0)
+                  )
                   AND created_at >= ?
                 """,
                 (action.action_type.value, day_start),
@@ -87,13 +95,14 @@ class ActionLedger:
                     """
                     UPDATE automation_actions
                     SET status = 'reserved',
+                        retryable = 1,
                         reason = ?,
                         confidence = ?,
                         created_at = ?,
                         executed_at = NULL,
                         provider_result = NULL,
                         error = NULL
-                    WHERE idempotency_key = ? AND status = 'failed'
+                    WHERE idempotency_key = ? AND status = 'failed' AND retryable = 1
                     """,
                     (
                         action.reason,
@@ -110,11 +119,12 @@ class ActionLedger:
                         action_type,
                         target_id,
                         status,
+                        retryable,
                         reason,
                         confidence,
                         payload_json,
                         created_at
-                    ) VALUES (?, ?, ?, 'reserved', ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, 'reserved', 1, ?, ?, ?, ?)
                     """,
                     (
                         action.idempotency_key,
@@ -139,18 +149,26 @@ class ActionLedger:
             status="succeeded",
             provider_result=json.dumps(provider_result, sort_keys=True, default=str),
             error=None,
+            retryable=False,
         )
 
-    def mark_failed(self, idempotency_key: str, error: str) -> None:
+    def mark_failed(
+        self,
+        idempotency_key: str,
+        error: str,
+        *,
+        retryable: bool = True,
+    ) -> None:
         self._finish(
             idempotency_key,
             status="failed",
             provider_result=None,
             error=error[:4000],
+            retryable=retryable,
         )
 
     def usage_snapshot(self, now: datetime | None = None) -> UsageSnapshot:
-        """Return committed and in-flight usage for the current UTC day."""
+        """Return committed, in-flight, and outcome-ambiguous usage for the UTC day."""
 
         day_start = self._day_start(now).isoformat()
         connection = self._connect()
@@ -159,7 +177,10 @@ class ActionLedger:
                 """
                 SELECT action_type, COUNT(*) AS action_count
                 FROM automation_actions
-                WHERE status IN ('reserved', 'succeeded')
+                WHERE (
+                    status IN ('reserved', 'succeeded')
+                    OR (status = 'failed' AND retryable = 0)
+                )
                   AND created_at >= ?
                 GROUP BY action_type
                 """,
@@ -198,6 +219,7 @@ class ActionLedger:
         status: str,
         provider_result: str | None,
         error: str | None,
+        retryable: bool,
     ) -> None:
         executed_at = datetime.now(UTC).isoformat()
         connection = self._connect()
@@ -205,11 +227,18 @@ class ActionLedger:
             cursor = connection.execute(
                 """
                 UPDATE automation_actions
-                SET status = ?, provider_result = ?, error = ?, executed_at = ?
+                SET status = ?, retryable = ?, provider_result = ?, error = ?, executed_at = ?
                 WHERE idempotency_key = ?
                   AND status = 'reserved'
                 """,
-                (status, provider_result, error, executed_at, idempotency_key),
+                (
+                    status,
+                    1 if retryable else 0,
+                    provider_result,
+                    error,
+                    executed_at,
+                    idempotency_key,
+                ),
             )
             if cursor.rowcount != 1:
                 raise RuntimeError(
@@ -234,6 +263,7 @@ class ActionLedger:
                     status TEXT NOT NULL CHECK (
                         status IN ('reserved', 'succeeded', 'failed')
                     ),
+                    retryable INTEGER NOT NULL DEFAULT 1 CHECK (retryable IN (0, 1)),
                     reason TEXT NOT NULL,
                     confidence REAL NOT NULL,
                     payload_json TEXT NOT NULL,
@@ -244,10 +274,21 @@ class ActionLedger:
                 )
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(automation_actions)").fetchall()
+            }
+            if "retryable" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE automation_actions
+                    ADD COLUMN retryable INTEGER NOT NULL DEFAULT 1
+                    """
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_automation_actions_usage
-                ON automation_actions (status, created_at, action_type)
+                ON automation_actions (status, retryable, created_at, action_type)
                 """
             )
             connection.commit()

@@ -3,7 +3,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from instabotai.domain import ActionType, ApprovalState, PlannedAction
-from instabotai.state import ActionLedger, DailyLimitExceededError
+from instabotai.state import (
+    ActionLedger,
+    DailyLimitExceededError,
+    DuplicateActionError,
+)
 
 
 def planned(key: str, *, created_at: datetime | None = None) -> PlannedAction:
@@ -48,4 +52,33 @@ def test_client_cannot_backdate_action_to_bypass_daily_limit() -> None:
     assert ledger.usage_snapshot().published_today == 1
     with pytest.raises(DailyLimitExceededError, match="limit reached"):
         ledger.reserve(planned("backdated-key-002"), daily_limit=1)
+    ledger.close()
+
+
+def test_non_retryable_failed_write_cannot_be_replayed_and_consumes_quota() -> None:
+    ledger = ActionLedger(":memory:")
+    action = planned("ambiguous-key-001")
+    ledger.reserve(action, daily_limit=2)
+    ledger.mark_failed(
+        action.idempotency_key,
+        "write outcome unknown",
+        retryable=False,
+    )
+
+    assert ledger.status(action.idempotency_key) == "failed"
+    assert ledger.usage_snapshot().published_today == 1
+    with pytest.raises(DuplicateActionError, match="cannot be replayed"):
+        ledger.reserve(action, daily_limit=2)
+    ledger.close()
+
+
+def test_retryable_failed_write_can_reuse_exact_action_identity() -> None:
+    ledger = ActionLedger(":memory:")
+    action = planned("retryable-key-001")
+    ledger.reserve(action, daily_limit=2)
+    ledger.mark_failed(action.idempotency_key, "known rejection")
+
+    ledger.reserve(action, daily_limit=2)
+
+    assert ledger.status(action.idempotency_key) == "reserved"
     ledger.close()

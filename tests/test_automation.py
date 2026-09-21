@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from instabotai.automation import AutomationService
+from instabotai.automation import AmbiguousWriteError, AutomationService
 from instabotai.domain import ActionType, ApprovalState, PlannedAction
 from instabotai.policy import AutomationPolicy
 from instabotai.settings import Settings
@@ -22,6 +22,12 @@ class FakeProvider:
 
     async def hide_comment(self, comment_id: str, *, hide: bool = True) -> bool:
         return bool(comment_id and hide)
+
+
+class AmbiguousProvider(FakeProvider):
+    async def publish_image(self, image_url: str, caption: str = "") -> str:
+        self.published.append((image_url, caption))
+        raise AmbiguousWriteError("provider outcome is unknown")
 
 
 def action(key: str = "campaign-post-001") -> PlannedAction:
@@ -64,6 +70,27 @@ async def test_executor_is_idempotent(tmp_path: Path) -> None:
 
     with pytest.raises(DuplicateActionError):
         await service.execute(planned)
+
+
+async def test_ambiguous_write_is_not_replayed(tmp_path: Path) -> None:
+    settings = Settings(_env_file=None)
+    ledger = ActionLedger(str(tmp_path / "state.sqlite3"))
+    provider = AmbiguousProvider()
+    service = AutomationService(AutomationPolicy(settings), ledger, provider)
+    planned = action("ambiguous-post-001")
+
+    with pytest.raises(AmbiguousWriteError):
+        await service.execute(planned)
+
+    assert ledger.status(planned.idempotency_key) == "failed"
+    assert ledger.usage_snapshot().published_today == 1
+
+    with pytest.raises(DuplicateActionError):
+        await service.execute(planned)
+
+    assert provider.published == [
+        ("https://cdn.example.com/launch.jpg", "Launch day")
+    ]
 
 
 async def test_executor_fails_before_provider_when_approval_missing(tmp_path: Path) -> None:

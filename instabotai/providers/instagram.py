@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from instabotai.automation import AmbiguousWriteError
 from instabotai.settings import Settings
 
 
@@ -16,6 +17,10 @@ class InstagramProviderError(RuntimeError):
 
 class InstagramGraphClient:
     """Async client for supported Instagram professional-account operations."""
+
+    _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+    _AMBIGUOUS_WRITE_STATUS_CODES = frozenset({500, 502, 503, 504})
+    _RETRY_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
         if settings.instagram_access_token is None:
@@ -108,27 +113,56 @@ class InstagramGraphClient:
         params: dict[str, str] | None = None,
         data: dict[str, str] | None = None,
     ) -> dict[str, Any]:
+        method_name = method.upper()
+        retry_safe = method_name in self._RETRY_SAFE_METHODS
+        max_attempts = self._settings.provider_max_retries + 1 if retry_safe else 1
         url = self._url(path)
         last_error: Exception | None = None
-        for attempt in range(self._settings.provider_max_retries + 1):
+
+        for attempt in range(max_attempts):
             try:
                 response = await self._client.request(
-                    method,
+                    method_name,
                     url,
                     params=params,
                     data=data,
                 )
-                payload = self._decode_payload(response)
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                if not retry_safe:
+                    raise AmbiguousWriteError(
+                        "Instagram write transport failed after dispatch; "
+                        "the write outcome is unknown and automatic replay is blocked"
+                    ) from exc
+                last_error = exc
+            else:
+                try:
+                    payload = self._decode_payload(response)
+                except InstagramProviderError as exc:
+                    if not retry_safe:
+                        raise AmbiguousWriteError(
+                            "Instagram write returned an unusable response; "
+                            "the write outcome is unknown and automatic replay is blocked"
+                        ) from exc
+                    raise
+
                 if 200 <= response.status_code < 300:
                     return payload
+
                 message = self._error_message(payload, response.status_code)
-                if response.status_code not in {429, 500, 502, 503, 504}:
+                if not retry_safe:
+                    if response.status_code in self._AMBIGUOUS_WRITE_STATUS_CODES:
+                        raise AmbiguousWriteError(
+                            f"{message}; write outcome is unknown and automatic replay is blocked"
+                        )
+                    raise InstagramProviderError(message)
+
+                if response.status_code not in self._RETRYABLE_STATUS_CODES:
                     raise InstagramProviderError(message)
                 last_error = InstagramProviderError(message)
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                last_error = exc
-            if attempt < self._settings.provider_max_retries:
+
+            if attempt + 1 < max_attempts:
                 await asyncio.sleep(min(2**attempt, 8))
+
         raise InstagramProviderError(
             f"Instagram request failed after retries: {last_error}"
         ) from last_error

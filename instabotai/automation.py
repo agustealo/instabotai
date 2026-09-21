@@ -9,6 +9,10 @@ from instabotai.policy import AutomationPolicy, PolicyViolation
 from instabotai.state import ActionLedger, DailyLimitExceededError
 
 
+class AmbiguousWriteError(RuntimeError):
+    """Raised when a write may have reached the provider but no outcome was confirmed."""
+
+
 class InstagramWriter(Protocol):
     async def publish_image(self, image_url: str, caption: str = "") -> str:
         """Publish a single image and return the Instagram media id."""
@@ -51,6 +55,13 @@ class AutomationService:
 
         try:
             result = await self._dispatch(action)
+        except AmbiguousWriteError as exc:
+            self._ledger.mark_failed(
+                action.idempotency_key,
+                str(exc),
+                retryable=False,
+            )
+            raise
         except Exception as exc:
             self._ledger.mark_failed(action.idempotency_key, str(exc))
             raise

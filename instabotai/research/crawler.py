@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import heapq
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
@@ -12,6 +15,9 @@ from instabotai.domain import ResearchPage, ResearchReport
 from instabotai.settings import Settings
 
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_+-]{1,}", re.IGNORECASE)
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
+NAT64_LOCAL_USE = ipaddress.IPv6Network("64:ff9b:1::/48")
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,36 +33,135 @@ class PageFetcher(Protocol):
         """Fetch and normalize one public web page."""
 
 
-class ResearchAccessPolicy:
-    """Allow only explicitly safe public-web targets."""
+class HostResolver(Protocol):
+    async def resolve(self, host: str, port: int) -> tuple[IPAddress, ...]:
+        """Resolve a hostname to every address the operating system returned."""
 
-    def __init__(self, settings: Settings) -> None:
+
+class SystemHostResolver:
+    """Async system DNS resolver used by the research egress policy."""
+
+    async def resolve(self, host: str, port: int) -> tuple[IPAddress, ...]:
+        loop = asyncio.get_running_loop()
+        records = await loop.getaddrinfo(
+            host,
+            port,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+        addresses: list[IPAddress] = []
+        for record in records:
+            raw = str(record[4][0]).split("%", 1)[0]
+            address = ipaddress.ip_address(raw)
+            if address not in addresses:
+                addresses.append(address)
+        return tuple(addresses)
+
+
+class ResearchAccessPolicy:
+    """Allow only explicitly permitted, globally routable public-web targets."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        resolver: HostResolver | None = None,
+    ) -> None:
         self._blocked = settings.research_blocked_domains
         self._allowed = settings.research_allowed_domains
+        self._resolver = resolver or SystemHostResolver()
 
     def allows(self, url: str) -> bool:
+        """Apply structural/domain policy and reject unsafe literal IP targets."""
+
         parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
+        if parsed.scheme.lower() not in {"http", "https"}:
             return False
         host = (parsed.hostname or "").lower().rstrip(".")
         if not host:
             return False
+        if parsed.username is not None or parsed.password is not None:
+            return False
         if self._matches(host, self._blocked):
             return False
-        return not self._allowed or self._matches(host, self._allowed)
+        if self._allowed and not self._matches(host, self._allowed):
+            return False
+
+        literal = self._literal_address(host)
+        return literal is None or self._address_is_public(literal)
+
+    async def allows_destination(self, url: str) -> bool:
+        """Resolve a target and require every returned address to be globally routable."""
+
+        if not self.allows(url):
+            return False
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        literal = self._literal_address(host)
+        if literal is not None:
+            return self._address_is_public(literal)
+
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        try:
+            addresses = await self._resolver.resolve(host, port)
+        except (OSError, ValueError):
+            return False
+        return bool(addresses) and all(self._address_is_public(address) for address in addresses)
 
     @staticmethod
     def _matches(host: str, domains: tuple[str, ...]) -> bool:
         return any(host == domain or host.endswith(f".{domain}") for domain in domains)
 
+    @staticmethod
+    def _literal_address(host: str) -> IPAddress | None:
+        try:
+            return ipaddress.ip_address(host)
+        except ValueError:
+            return None
+
+    @classmethod
+    def _address_is_public(cls, address: IPAddress) -> bool:
+        if (
+            not address.is_global
+            or address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        ):
+            return False
+
+        if isinstance(address, ipaddress.IPv6Address):
+            if address.ipv4_mapped is not None and not cls._address_is_public(address.ipv4_mapped):
+                return False
+            if address.sixtofour is not None and not cls._address_is_public(address.sixtofour):
+                return False
+            if address.teredo is not None:
+                server, client = address.teredo
+                if not cls._address_is_public(server) or not cls._address_is_public(client):
+                    return False
+            if address in NAT64_WELL_KNOWN or address in NAT64_LOCAL_USE:
+                embedded = ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)
+                if not cls._address_is_public(embedded):
+                    return False
+        return True
+
 
 class Crawl4AIFetcher:
-    """Production page fetcher using the current Crawl4AI async API."""
+    """Production page fetcher using Crawl4AI with per-request egress validation."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        access_policy: ResearchAccessPolicy | None = None,
+    ) -> None:
         self._settings = settings
+        self._access = access_policy or ResearchAccessPolicy(settings)
 
     async def fetch(self, url: str) -> FetchedPage:
+        if not await self._access.allows_destination(url):
+            raise RuntimeError("research target rejected by destination policy")
+
         try:
             from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
         except ImportError as exc:
@@ -75,17 +180,48 @@ class Crawl4AIFetcher:
             page_timeout=int(self._settings.request_timeout_seconds * 1000),
         )
 
-        async with AsyncWebCrawler(config=browser_config) as crawler:
+        crawler = AsyncWebCrawler(config=browser_config)
+        crawler.crawler_strategy.set_hook(
+            "on_page_context_created",
+            self._on_page_context_created,
+        )
+        async with crawler:
             result = await crawler.arun(url=url, config=run_config)
 
         if not bool(getattr(result, "success", False)):
             message = str(getattr(result, "error_message", "crawl failed"))
             raise RuntimeError(message)
 
+        actual_url = str(getattr(result, "url", "") or url)
+        if not await self._access.allows_destination(actual_url):
+            raise RuntimeError("research redirect destination rejected by policy")
+
         markdown = self._markdown_text(getattr(result, "markdown", ""))
         title = self._extract_title(result)
-        links = self._extract_links(url, getattr(result, "links", None))
-        return FetchedPage(url=url, title=title, markdown=markdown, links=links)
+        links = self._extract_links(actual_url, getattr(result, "links", None))
+        return FetchedPage(
+            url=actual_url,
+            title=title,
+            markdown=markdown,
+            links=links,
+        )
+
+    async def _on_page_context_created(
+        self,
+        page: Any,
+        context: Any,
+        **_: Any,
+    ) -> Any:
+        await context.route("**/*", self._route_request)
+        return page
+
+    async def _route_request(self, route: Any) -> None:
+        request_url = str(route.request.url)
+        scheme = urlparse(request_url).scheme.lower()
+        if scheme in {"http", "https"} and not await self._access.allows_destination(request_url):
+            await route.abort("blockedbyclient")
+            return
+        await route.continue_()
 
     @staticmethod
     def _markdown_text(value: Any) -> str:
@@ -169,7 +305,7 @@ class AdaptiveResearchService:
                 continue
             seen.add(url)
 
-            if not self._access.allows(url):
+            if not await self._access.allows_destination(url):
                 blocked.append(url)
                 continue
 
