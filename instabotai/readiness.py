@@ -178,7 +178,8 @@ class ConsumerTrialReadinessService:
                 detail="SQLite state was created by a newer unsupported schema version.",
                 remediation=(
                     "Install a compatible newer InstabotAI build or restore a backup created "
-                    "before the newer schema was installed. Do not downgrade this database in place."
+                    "before the newer schema was installed. Do not downgrade this database "
+                    "in place."
                 ),
             )
         except (StateSchemaError, OSError, sqlite3.Error) as exc:
