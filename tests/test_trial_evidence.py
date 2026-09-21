@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
+from typer.testing import CliRunner
+
+import instabotai.cli as cli_module
+from instabotai.application import InstabotApplication
 from instabotai.campaigns import Campaign, CampaignMode, CampaignStatus, CampaignStore
+from instabotai.cli import app as cli_app
 from instabotai.domain import ActionType, PlannedAction
 from instabotai.evidence import (
     TrialEvidenceService,
@@ -22,6 +30,7 @@ from instabotai.intelligence import (
 from instabotai.settings import Settings
 from instabotai.state import ActionLedger
 from instabotai.storage import upgrade_state_database
+from instabotai.web import create_app
 
 
 def settings(tmp_path: Path) -> Settings:
@@ -221,6 +230,75 @@ async def test_bundle_round_trip_and_private_file_permissions(tmp_path: Path) ->
     assert loaded.integrity.digest == bundle.integrity.digest
     if os.name == "posix":
         assert written.stat().st_mode & 0o777 == 0o600
+
+
+async def test_http_evidence_endpoint_is_secret_free_and_never_cached(tmp_path: Path) -> None:
+    active = settings(tmp_path)
+    job_id = seed_trial_state(active)
+    transport = httpx.ASGITransport(app=create_app(settings=active))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as web:
+        response = await web.get(f"/api/campaign-jobs/{job_id}/evidence")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    payload = response.json()
+    assert payload["job_id"] == job_id
+    assert payload["integrity"]["algorithm"] == "sha256"
+    assert payload["integrity"]["signed"] is False
+    assert payload["job"]["outcome_reward"] == 0.82
+    for secret in (
+        "instagram-super-secret",
+        "ai-super-secret",
+        "context-secret",
+        "payload-token",
+        "payload-password",
+        "provider-token",
+        "provider-api-key",
+        "upstream-secret",
+    ):
+        assert secret not in response.text
+
+
+def test_cli_exports_evidence_through_canonical_application(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    active = settings(tmp_path)
+    job_id = seed_trial_state(active)
+    output = tmp_path / "cli-evidence.json"
+    monkeypatch.setattr(cli_module, "_service", lambda: InstabotApplication(active))
+
+    result = CliRunner().invoke(
+        cli_app,
+        ["trial-evidence", job_id, "--output", str(output)],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert output.is_file()
+    loaded = load_evidence_bundle(output)
+    assert verify_evidence_bundle(loaded).valid
+    assert loaded.job_id == job_id
+    assert "instagram-super-secret" not in output.read_text(encoding="utf-8")
+
+
+def test_cli_verifier_fails_closed_after_bundle_tampering(tmp_path: Path) -> None:
+    active = settings(tmp_path)
+    job_id = seed_trial_state(active)
+    bundle = asyncio.run(TrialEvidenceService(active).build(job_id))
+    output = write_evidence_bundle(bundle, tmp_path / "verify-evidence.json")
+    runner = CliRunner()
+
+    valid = runner.invoke(cli_app, ["trial-evidence-verify", str(output)])
+    assert valid.exit_code == 0, valid.stdout
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    payload["campaign"]["objective"] = "tampered after export"
+    output.write_text(json.dumps(payload), encoding="utf-8")
+
+    invalid = runner.invoke(cli_app, ["trial-evidence-verify", str(output)])
+    assert invalid.exit_code == 2
+    assert '"valid": false' in invalid.stdout.lower()
 
 
 async def test_bundle_fails_when_job_is_missing(tmp_path: Path) -> None:
