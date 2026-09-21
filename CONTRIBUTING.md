@@ -1,32 +1,87 @@
-# Contributing to Instabotai
+# Contributing to InstabotAI
 
-👍🎉 First off, thanks for taking the time to contribute! 🎉👍
+InstabotAI 2.x is a clean rebuild around provider adapters, typed domain models, policy-governed execution, durable state, and adaptive research. Contributions should strengthen that architecture rather than recreate legacy mass-action scripts or parallel authorities.
 
-## How can I help the project?
+## Development setup
 
-You can:
-* Put the star into the [Instabot main repository](https://github.com/instabotai). To do this, click on the star here https://github.com/instabotai at top right corner. Mind that GitHub registration is required (for free).
-* Login to [Telegram Group](https://t.me/instabotai) and help newcomers to understand the installation and configuration of Instabot. 
-* Tell everywhere about our project! It will be enough to throw off the link: https://instabotai.com
-* Find bugs and describe them in [Issues](https://github.com/instagrambot/instabotai/issues) section, be sure to attach the _screenshots_ and _commands_ that you entered. This will help correct these errors and make Instabot better!
-* If you are a developer, correct these bugs and errors! Do this via Pull Request, don't forget the PEP8 standard.
-* If you have a brilliant Instabot usage example or even the independent project connected with instagram, [tell us](https://t.me/instabotai) about it!
+Use Python 3.12 or newer.
 
-## Adding the new docs
-If you want to add a new documentation page in any language please follow the guide below.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -e '.[dev]'
+```
 
-1. If your docs have not been written in english, please translate your doc in English too and add it into [en/](https://github.com/instagrambot/docs/blob/master/en/) folder.
-2. Make sure that your doc is written descriptive enough. If you use pictures, please upload them into [img/](https://github.com/instagrambot/docs/blob/master/img/) folder.
-3. Add the link to your doc into the existing docs to make other users find your page.
-4. Create pull request with your docs.
+Install optional capabilities when working on them:
 
-## Translate the Docs into your language
+```bash
+python -m pip install -e '.[dev,private]'
+python -m pip install -e '.[dev,research]'
+```
 
-1. Fork the [repository](https://github.com/instabotai/instabotai).
-2. Create a folder with the name of your country in the abbreviation.
-3. Copy all the files from the `/en/` folder to your earlier created folder.
-4. Translate the files into your language, leaving the file structure of the previous one (paragraphs etc).
-5. Add the link to your docs in the main [README.md](https://github.com/instagrambot/docs/blob/master/README.md) file. Don't forget to add the flag emoji!
-6. Create pull request.
+## Required local gate
 
-***Thank you for supporting the project!***
+Before proposing a change, run the same core validation enforced in GitHub Actions:
+
+```bash
+python -m ruff check \
+  instabotai/__init__.py \
+  instabotai/settings.py \
+  instabotai/domain.py \
+  instabotai/policy.py \
+  instabotai/state.py \
+  instabotai/automation.py \
+  instabotai/providers \
+  instabotai/research \
+  instabotai/cli.py \
+  tests
+python -m mypy instabotai
+python -m pytest
+instabotai doctor
+```
+
+Do not weaken strict typing, policy checks, or tests to make a change pass.
+
+## Architectural rules
+
+1. **One canonical write path.** Instagram writes belong behind `AutomationService`, `AutomationPolicy`, and `ActionLedger`.
+2. **Provider adapters are transport boundaries.** Official and private Instagram providers implement shared capabilities; application decisions do not belong inside provider clients.
+3. **No duplicate persistence authority.** Durable execution state belongs in the canonical state layer.
+4. **Research and account access stay separate.** Crawl4AI is for policy-approved public-web research. Instagram account access belongs to an Instagram provider.
+5. **Fail closed.** Unsupported actions, invalid configuration, quota exhaustion, missing approval, or ambiguous write state must not silently proceed.
+6. **No hidden mock production behavior.** Test doubles belong in tests. Runtime fallbacks must represent real supported behavior.
+7. **No credential files in Git.** Secrets and local session artifacts must remain outside source control.
+8. **Private-provider compatibility is optional.** Do not make unofficial protocol behavior the application core.
+9. **Do not automate security-checkpoint defeat.** Verification and account challenges remain controlled by Instagram and the account owner.
+10. **Keep the package modular.** Prefer small typed services and explicit interfaces over monolithic scripts or global mutable clients.
+
+## Changes to provider behavior
+
+Provider changes should include tests for the contract they modify. When adding a capability, determine whether it is supported by both providers. If not, the unsupported provider should fail explicitly rather than pretend success.
+
+For private-provider changes, preserve reusable session/device context and propagate challenge, feedback, throttling, and authentication failures clearly. Do not add mechanisms whose purpose is to disguise automation or evade platform controls.
+
+## Changes to automation
+
+Every new write action needs:
+
+- an explicit `ActionType`;
+- a typed payload contract;
+- a policy decision path;
+- a hard limit where repeated execution could be harmful;
+- idempotency behavior;
+- durable success/failure audit state;
+- tests for rejection and success cases.
+
+## Changes to research
+
+Research changes must preserve domain access policy, bounded crawling, deterministic normalization, and explicit failure reporting. New ranking or extraction logic should have focused tests and should not turn Instagram private account access into generic scraping.
+
+## Pull requests
+
+Keep each pull request internally coherent and leave the branch in a fully gated state. Describe architectural effects, migration implications, provider differences, and validation evidence. If a change intentionally drops a legacy behavior, say so explicitly rather than carrying dead compatibility code indefinitely.
+
+## Security reports
+
+Do not publish credentials, session cookies, access tokens, private request traces, or account-identifying data in pull requests, commits, screenshots, or discussions. Redact sensitive information before sharing diagnostic output.
