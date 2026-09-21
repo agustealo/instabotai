@@ -7,6 +7,7 @@ import json
 import os
 import re
 import tempfile
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -271,15 +272,11 @@ def write_evidence_bundle(bundle: TrialEvidenceBundle, path: Path) -> Path:
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        try:
+        with suppress(OSError):
             temporary.chmod(0o600)
-        except OSError:
-            pass
         os.replace(temporary, destination)
-        try:
+        with suppress(OSError):
             destination.chmod(0o600)
-        except OSError:
-            pass
     finally:
         if temporary.exists():
             temporary.unlink()
