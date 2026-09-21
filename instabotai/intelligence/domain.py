@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -70,6 +71,7 @@ class ModelReply(BaseModel):
 class IntelligenceDecision(BaseModel):
     """Auditable result of model generation plus deterministic adjudication."""
 
+    decision_id: str = Field(default_factory=lambda: uuid4().hex, min_length=16, max_length=64)
     objective: str
     selected: DecisionCandidate | None = None
     score: float = Field(default=0.0, ge=0.0, le=1.0)
