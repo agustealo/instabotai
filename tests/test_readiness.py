@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 from instabotai.intelligence import IntelligenceProbe
@@ -37,6 +38,18 @@ async def test_static_readiness_passes_core_with_configured_official_provider(
     assert checks["instagram_live"].status == "skip"
 
 
+async def test_readiness_rejects_in_memory_state_as_non_durable(tmp_path: Path) -> None:
+    report = await ConsumerTrialReadinessService(
+        settings(tmp_path, state_db_path=":memory:")
+    ).evaluate()
+    state = check_map(report)["state"]
+
+    assert not report.ready
+    assert state.status == "fail"
+    assert "transient" in state.detail
+    assert "INSTABOTAI_STATE_DB_PATH" in (state.remediation or "")
+
+
 async def test_readiness_blocks_missing_official_credentials(tmp_path: Path) -> None:
     active = settings(
         tmp_path,
@@ -50,8 +63,54 @@ async def test_readiness_blocks_missing_official_credentials(tmp_path: Path) -> 
     assert not report.ready
     assert checks["instagram_configuration"].status == "fail"
     assert "Instagram provider configuration" in report.blockers
-    assert "INSTABOTAI_INSTAGRAM_ACCOUNT_ID" in checks["instagram_configuration"].remediation
-    assert "INSTABOTAI_INSTAGRAM_ACCESS_TOKEN" in checks["instagram_configuration"].remediation
+    remediation = checks["instagram_configuration"].remediation or ""
+    assert "INSTABOTAI_INSTAGRAM_ACCOUNT_ID" in remediation
+    assert "INSTABOTAI_INSTAGRAM_ACCESS_TOKEN" in remediation
+
+
+async def test_readiness_blocks_empty_official_token(tmp_path: Path) -> None:
+    report = await ConsumerTrialReadinessService(
+        settings(tmp_path, instagram_access_token="   ")
+    ).evaluate()
+    configuration = check_map(report)["instagram_configuration"]
+
+    assert not report.ready
+    assert configuration.status == "fail"
+    assert "INSTABOTAI_INSTAGRAM_ACCESS_TOKEN" in (configuration.remediation or "")
+
+
+async def test_private_credential_bundle_is_a_supported_login_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    bundle = tmp_path / "private-credentials.json"
+    bundle.write_text(
+        json.dumps({"username": "bundle-user", "password": "bundle-password"}),
+        encoding="utf-8",
+    )
+    original = importlib.util.find_spec
+
+    def find_spec(name: str, package: str | None = None):
+        if name == "instagrapi":
+            return object()
+        return original(name, package)
+
+    monkeypatch.setattr("instabotai.readiness.importlib.util.find_spec", find_spec)
+    active = settings(
+        tmp_path,
+        instagram_provider="private",
+        private_instagram_username=None,
+        private_instagram_password=None,
+        private_research_mode=True,
+        private_credentials_file=str(bundle),
+    )
+
+    report = await ConsumerTrialReadinessService(active).evaluate()
+    configuration = check_map(report)["instagram_configuration"]
+
+    assert report.ready
+    assert configuration.status == "pass"
+    assert "supported credential source" in configuration.detail
 
 
 async def test_readiness_requires_supervised_write_guardrail(tmp_path: Path) -> None:
