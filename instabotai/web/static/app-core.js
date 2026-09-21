@@ -2,6 +2,7 @@
 
 const state = {
   runtime: null,
+  readiness: null,
   lastDecisionPayload: null,
   decisions: [],
   evidenceCounter: 0,
@@ -101,12 +102,63 @@ function pill(text, kind = "info") {
   return element("span", `pill ${kind}`, text);
 }
 
-function readinessItem(title, detail, ready, readyText = "Ready") {
+function readinessItem(check) {
+  const states = {
+    pass: ["Ready", "good"],
+    warn: ["Optional", "warn"],
+    fail: ["Blocked", "warn"],
+    skip: ["Not run", "info"],
+  };
+  const [label, kind] = states[check.status] || [String(check.status), "info"];
   const row = element("div", "readiness-item");
   const copy = element("div", "readiness-copy");
-  copy.append(element("strong", null, title), element("span", null, detail));
-  row.append(copy, pill(ready ? readyText : "Needs setup", ready ? "good" : "warn"));
+  const detail = check.remediation
+    ? `${check.detail} ${check.remediation}`
+    : check.detail;
+  copy.append(element("strong", null, check.label), element("span", null, detail));
+  row.append(copy, pill(label, kind));
   return row;
+}
+
+function renderReadiness(report) {
+  state.readiness = report;
+  const container = $("#readiness-list");
+  const summary = readinessItem({
+    label: "Consumer-trial gate",
+    detail: report.ready
+      ? `${report.live_probes ? "Live" : "Static"} readiness checks have no required blockers.`
+      : `Blocked by ${report.blockers.join(", ") || "one or more required checks"}.`,
+    remediation: null,
+    status: report.ready ? "pass" : "fail",
+  });
+  container.replaceChildren(summary, ...report.checks.map(readinessItem));
+}
+
+async function loadReadiness(live = false) {
+  const button = $("#run-readiness");
+  if (live) setBusy(button, true, "Running live checks…");
+  try {
+    const report = await api(
+      live ? "/api/readiness/probe" : "/api/readiness",
+      live ? { method: "POST", body: "{}" } : {},
+    );
+    renderReadiness(report);
+    if (live) {
+      showFlash(
+        report.ready
+          ? "Live consumer-trial readiness checks passed."
+          : `Consumer-trial readiness remains blocked: ${report.blockers.join(", ")}.`,
+        report.ready ? "good" : "error",
+      );
+    }
+  } catch (error) {
+    $("#readiness-list").replaceChildren(
+      element("div", "empty-state", `Readiness check failed: ${error.message}`),
+    );
+    showFlash(`Readiness check failed: ${error.message}`, "error");
+  } finally {
+    if (live) setBusy(button, false);
+  }
 }
 
 function metricCard(label, value, detail) {
@@ -126,6 +178,7 @@ async function loadRuntime() {
     const runtime = await api("/api/runtime");
     state.runtime = runtime;
     renderRuntime(runtime);
+    await loadReadiness(false);
     $("#health-dot").className = "status-dot good";
     $("#health-label").textContent = "Runtime online";
   } catch (error) {
@@ -161,41 +214,6 @@ function renderRuntime(runtime) {
       "Research budget",
       `${runtime.research.max_pages} pages`,
       `${formatPercent(runtime.research.confidence_threshold)} confidence target`,
-    ),
-  );
-
-  const readiness = $("#readiness-list");
-  const instagramReady = runtime.instagram.provider === "official"
-    ? runtime.instagram.account_configured && runtime.instagram.token_configured
-    : runtime.instagram.private_username_configured && runtime.instagram.private_password_configured;
-
-  readiness.replaceChildren(
-    readinessItem(
-      "Reasoning model",
-      `${runtime.ai.provider} · ${runtime.ai.base_url}`,
-      true,
-      "Configured",
-    ),
-    readinessItem(
-      "Instagram account",
-      runtime.instagram.provider === "official"
-        ? "Official Graph API credentials"
-        : "Private provider credentials",
-      instagramReady,
-    ),
-    readinessItem(
-      "Decision audit",
-      runtime.state_db_path,
-      true,
-      "Durable",
-    ),
-    readinessItem(
-      "Write authority",
-      runtime.policy.write_approval_required
-        ? "AI output remains pending until approval"
-        : "Policy allows approved runtime execution",
-      true,
-      "Policy gated",
     ),
   );
 
@@ -617,6 +635,7 @@ function wireNavigation() {
 function initialize() {
   wireNavigation();
   $("#refresh-runtime").addEventListener("click", loadRuntime);
+  $("#run-readiness").addEventListener("click", () => loadReadiness(true));
   $("#run-ai-probe").addEventListener("click", runAIProbe);
   $("#add-evidence").addEventListener("click", () => addEvidence());
   $("#plan-form").addEventListener("submit", submitPlan);
