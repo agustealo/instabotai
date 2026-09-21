@@ -1,23 +1,29 @@
-# Use an official Python runtime as a parent image
-FROM python:3.6.2
+FROM python:3.12-slim
 
-# Set the working directory to /app
+ARG INSTABOTAI_EXTRAS=""
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
+RUN groupadd --system instabotai \
+    && useradd --system --gid instabotai --create-home instabotai
 
-# Run Installation commands
-RUN apt-get update -y
-RUN apt-get upgrade -y
-RUN apt-get install -y python3-pip
-RUN pip install -U pip
+COPY pyproject.toml README.md LICENSE LICENSE_PREMIUM ./
+COPY instabotai ./instabotai
 
-# Install any needed packages specified in requirements.txt
- RUN pip install -r requirements.txt
+RUN python -m pip install --upgrade pip \
+    && if [ -n "$INSTABOTAI_EXTRAS" ]; then \
+         python -m pip install ".[${INSTABOTAI_EXTRAS}]"; \
+       else \
+         python -m pip install .; \
+       fi \
+    && chown -R instabotai:instabotai /app
 
-# Make port 8000 available to the world outside this container
-EXPOSE 8000
+USER instabotai
 
-# Run app.py when the container launches
- ENTRYPOINT ["python3", "run.py"]
+ENTRYPOINT ["instabotai"]
+CMD ["doctor"]
