@@ -17,13 +17,13 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -34,18 +34,7 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Ruff
-        run: |
-          python -m ruff check \
-            instabotai/__init__.py \
-            instabotai/settings.py \
-            instabotai/domain.py \
-            instabotai/policy.py \
-            instabotai/state.py \
-            instabotai/automation.py \
-            instabotai/providers \
-            instabotai/research \
-            instabotai/cli.py \
-            tests
+        run: python -m ruff check instabotai tests
 
       - name: Mypy
         run: python -m mypy instabotai
@@ -54,5 +43,9 @@ jobs:
         run: python -m pytest
 
       - name: Package smoke
+        run: instabotai doctor
+
+      - name: Container smoke
         run: |
-          instabotai doctor
+          docker build -t instabotai-ci .
+          docker run --rm instabotai-ci doctor
