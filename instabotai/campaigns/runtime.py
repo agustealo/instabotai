@@ -65,7 +65,9 @@ class CampaignRuntime:
             action_delay_minutes=action_delay_minutes,
             evidence=tuple(evidence or ()),
             context=context or {},
-            research_seed_urls=tuple(url.strip() for url in (research_seed_urls or ()) if url.strip()),
+            research_seed_urls=tuple(
+                url.strip() for url in (research_seed_urls or ()) if url.strip()
+            ),
             research_before_plan=research_before_plan,
         )
         return self.store.create_campaign(campaign)
