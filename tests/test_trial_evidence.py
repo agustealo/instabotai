@@ -14,8 +14,8 @@ from instabotai.evidence import (
 )
 from instabotai.intelligence import (
     DecisionCandidate,
-    DecisionReview,
     DecisionJournal,
+    DecisionReview,
     EvidenceItem,
     IntelligenceDecision,
 )
