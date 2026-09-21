@@ -13,7 +13,11 @@ from pydantic import BaseModel, Field
 
 from instabotai import __version__
 from instabotai.intelligence import IntelligenceProbe, build_reasoning_model, probe_reasoning_model
-from instabotai.providers import build_instagram_provider
+from instabotai.providers import (
+    PrivateInstagramProvider,
+    PrivateInstagramProviderError,
+    build_instagram_provider,
+)
 from instabotai.settings import Settings
 
 ReadinessStatus = Literal["pass", "warn", "fail", "skip"]
@@ -50,6 +54,16 @@ async def _close_resource(resource: Any) -> None:
     closer = getattr(resource, "aclose", None)
     if closer is not None:
         await closer()
+
+
+def _secret_has_text(value: Any) -> bool:
+    """Return whether a secret-like value contains non-whitespace text."""
+
+    if value is None:
+        return False
+    getter = getattr(value, "get_secret_value", None)
+    raw = getter() if callable(getter) else value
+    return bool(str(raw).strip())
 
 
 class ConsumerTrialReadinessService:
@@ -139,10 +153,20 @@ class ConsumerTrialReadinessService:
 
     def _state_check(self) -> ReadinessCheck:
         database_path = self.settings.state_db_path
+        if database_path == ":memory:":
+            return ReadinessCheck(
+                key="state",
+                label="Durable state",
+                status="fail",
+                detail="SQLite :memory: state is transient and cannot preserve trial evidence.",
+                remediation=(
+                    "Set INSTABOTAI_STATE_DB_PATH to a persistent filesystem-backed SQLite file."
+                ),
+            )
+
         try:
-            if database_path != ":memory:":
-                path = Path(database_path).expanduser()
-                path.parent.mkdir(parents=True, exist_ok=True)
+            path = Path(database_path).expanduser()
+            path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(database_path, timeout=5.0) as connection:
                 row = connection.execute("PRAGMA quick_check").fetchone()
                 if row is None or str(row[0]).lower() != "ok":
@@ -191,9 +215,9 @@ class ConsumerTrialReadinessService:
     def _instagram_configuration_check(self) -> ReadinessCheck:
         if self.settings.instagram_provider == "official":
             missing: list[str] = []
-            if not self.settings.instagram_account_id:
+            if not (self.settings.instagram_account_id or "").strip():
                 missing.append("INSTABOTAI_INSTAGRAM_ACCOUNT_ID")
-            if self.settings.instagram_access_token is None:
+            if not _secret_has_text(self.settings.instagram_access_token):
                 missing.append("INSTABOTAI_INSTAGRAM_ACCESS_TOKEN")
             if missing:
                 return ReadinessCheck(
@@ -201,7 +225,7 @@ class ConsumerTrialReadinessService:
                     label="Instagram provider configuration",
                     status="fail",
                     detail="Official provider credentials are incomplete.",
-                    remediation=f"Configure {', '.join(missing)}.",
+                    remediation=f"Configure {', '.join(missing)} with non-empty values.",
                 )
             return ReadinessCheck(
                 key="instagram_configuration",
@@ -210,12 +234,36 @@ class ConsumerTrialReadinessService:
                 detail="Official Instagram API account ID and access token are configured.",
             )
 
-        missing = []
-        if not self.settings.private_instagram_username:
-            missing.append("INSTABOTAI_PRIVATE_INSTAGRAM_USERNAME")
-        if self.settings.private_instagram_password is None:
-            missing.append("INSTABOTAI_PRIVATE_INSTAGRAM_PASSWORD")
-        if importlib.util.find_spec("instagrapi") is None:
+        package_installed = importlib.util.find_spec("instagrapi") is not None
+        private_provider = PrivateInstagramProvider(self.settings)
+        try:
+            bundle = private_provider._credential_bundle()
+            username = str(
+                self.settings.private_instagram_username or bundle.get("username") or ""
+            ).strip()
+            password = private_provider._secret_or_bundle(
+                self.settings.private_instagram_password,
+                bundle,
+                "password",
+            )
+        except PrivateInstagramProviderError:
+            return ReadinessCheck(
+                key="instagram_configuration",
+                label="Instagram provider configuration",
+                status="fail",
+                detail="Private provider credential source could not be validated.",
+                remediation=(
+                    "Use direct username/password settings or a valid authorized research "
+                    "credential bundle with private research mode enabled."
+                ),
+            )
+
+        missing: list[str] = []
+        if not username:
+            missing.append("private username")
+        if not (password or "").strip():
+            missing.append("private password")
+        if not package_installed:
             missing.append("the [private] package extra")
         if missing:
             return ReadinessCheck(
@@ -229,7 +277,10 @@ class ConsumerTrialReadinessService:
             key="instagram_configuration",
             label="Instagram provider configuration",
             status="pass",
-            detail="Private provider credentials and package extra are configured.",
+            detail=(
+                "Private provider login credentials and package extra are configured through "
+                "a supported credential source."
+            ),
         )
 
     @staticmethod
