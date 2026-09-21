@@ -52,13 +52,23 @@ def write_wheel(dist: Path, *, version: str = "2.0.0a1") -> Path:
     return wheel
 
 
-def write_sdist(dist: Path, *, version: str = "2.0.0a1") -> Path:
+def write_sdist(
+    dist: Path,
+    *,
+    version: str = "2.0.0a1",
+    include_tests: bool = False,
+) -> Path:
     sdist = dist / f"instabotai-{version}.tar.gz"
     payload = metadata_text(version=version).encode("utf-8")
     member = tarfile.TarInfo(name=f"instabotai-{version}/PKG-INFO")
     member.size = len(payload)
     with tarfile.open(sdist, mode="w:gz") as archive:
         archive.addfile(member, io.BytesIO(payload))
+        if include_tests:
+            test_payload = b"def test_release_payload_leak(): pass\n"
+            test_member = tarfile.TarInfo(name=f"instabotai-{version}/tests/test_leak.py")
+            test_member.size = len(test_payload)
+            archive.addfile(test_member, io.BytesIO(test_payload))
     return sdist
 
 
@@ -119,6 +129,17 @@ def test_release_contract_rejects_metadata_version_drift(tmp_path: Path) -> None
         archive.addfile(member, io.BytesIO(payload))
 
     with pytest.raises(ReleaseContractError, match="sdist metadata does not match"):
+        validate_distribution_files(dist, load_project_metadata(pyproject))
+
+
+def test_release_contract_rejects_repository_tests_in_sdist(tmp_path: Path) -> None:
+    pyproject = write_pyproject(tmp_path / "pyproject.toml")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    write_wheel(dist)
+    write_sdist(dist, include_tests=True)
+
+    with pytest.raises(ReleaseContractError, match="must not contain the repository test suite"):
         validate_distribution_files(dist, load_project_metadata(pyproject))
 
 
