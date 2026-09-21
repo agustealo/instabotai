@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release-artifacts
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    steps:
+      - name: Check out exact release ref
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify release identity and ancestry
+        id: identity
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          with Path("pyproject.toml").open("rb") as handle:
+              print(tomllib.load(handle)["project"]["version"])
+          PY
+          )
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" =~ (a|b|rc)[0-9]+|\.dev[0-9]+ ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            expected_tag="v${version}"
+            if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match package version $version; expected $expected_tag" >&2
+              exit 1
+            fi
+            git fetch --no-tags origin master:refs/remotes/origin/master
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master; then
+              echo "Release tag must point to a commit contained in master." >&2
+              exit 1
+            fi
+            if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release $GITHUB_REF_NAME already exists; release tags are immutable." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Build wheel and source distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "build>=1.3,<2"
+          rm -rf dist build
+          python -m build --sdist --wheel --outdir dist
+
+      - name: Validate artifact contract and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_args=()
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag_args=(--tag "$GITHUB_REF_NAME")
+          fi
+          python scripts/release_contract.py \
+            --dist dist \
+            --checksums dist/SHA256SUMS \
+            "${tag_args[@]}" \
+            > dist/release-contract.json
+          cat dist/release-contract.json
+          cat dist/SHA256SUMS
+
+      - name: Clean-wheel release smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/instabotai-release-wheel
+          python -m venv /tmp/instabotai-release-wheel
+          /tmp/instabotai-release-wheel/bin/python -m pip install --upgrade pip
+          wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          test -n "$wheel"
+          /tmp/instabotai-release-wheel/bin/python -m pip install "$wheel"
+          /tmp/instabotai-release-wheel/bin/instabotai doctor \
+            > dist/release-wheel-doctor.json
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-release-wheel/state.sqlite3 \
+          INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=release-static-readiness-token \
+          INSTABOTAI_INSTAGRAM_ACCOUNT_ID=release-static-account \
+            /tmp/instabotai-release-wheel/bin/instabotai trial-readiness \
+            > dist/release-wheel-readiness.json
+
+      - name: Production-container release smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ steps.identity.outputs.version }}'
+          image="instabotai-release:${version}"
+          docker build \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${version}" \
+            --tag "$image" \
+            .
+          runtime_uid=$(docker run --rm --entrypoint id "$image" -u)
+          test "$runtime_uid" != "0"
+          docker run --rm "$image" doctor > dist/release-container-doctor.json
+
+      - name: Publish immutable GHCR release image
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version='${{ steps.identity.outputs.version }}'
+          repository=$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          registry_image="ghcr.io/${repository}"
+          version_image="${registry_image}:${version}"
+          sha_image="${registry_image}:sha-${GITHUB_SHA}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag "instabotai-release:${version}" "$version_image"
+          docker tag "instabotai-release:${version}" "$sha_image"
+          docker push "$version_image"
+          docker push "$sha_image"
+          repo_digest=$(docker image inspect "$version_image" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep "^${registry_image}@sha256:" \
+            | head -n 1)
+          test -n "$repo_digest"
+          printf '%s\n' "$repo_digest" > dist/CONTAINER_IMAGE
+
+      - name: Upload release proof artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: instabotai-${{ steps.identity.outputs.version }}-release-proof
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create immutable GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          args=(
+            release create "$GITHUB_REF_NAME"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "InstabotAI ${{ steps.identity.outputs.version }}"
+            --generate-notes
+          )
+          if [[ '${{ steps.identity.outputs.prerelease }}' == 'true' ]]; then
+            args+=(--prerelease)
+          fi
+          for artifact in dist/*; do
+            args+=("$artifact")
+          done
+          gh "${args[@]}"
