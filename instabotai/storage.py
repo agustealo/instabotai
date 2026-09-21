@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -520,8 +521,6 @@ def _backup_database(
             raise StateSchemaError("pre-migration backup failed SQLite integrity verification")
     finally:
         destination.close()
-    try:
+    with suppress(OSError):
         backup.chmod(0o600)
-    except OSError:
-        pass
     return str(backup)
