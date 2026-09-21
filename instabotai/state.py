@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from instabotai.domain import ActionType, PlannedAction, UsageSnapshot
+from instabotai.storage import ensure_state_schema, open_state_connection
 
 
 class DuplicateActionError(RuntimeError):
@@ -254,44 +255,7 @@ class ActionLedger:
     def _initialize(self) -> None:
         connection = self._connect()
         try:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS automation_actions (
-                    idempotency_key TEXT PRIMARY KEY,
-                    action_type TEXT NOT NULL,
-                    target_id TEXT,
-                    status TEXT NOT NULL CHECK (
-                        status IN ('reserved', 'succeeded', 'failed')
-                    ),
-                    retryable INTEGER NOT NULL DEFAULT 1 CHECK (retryable IN (0, 1)),
-                    reason TEXT NOT NULL,
-                    confidence REAL NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    executed_at TEXT,
-                    provider_result TEXT,
-                    error TEXT
-                )
-                """
-            )
-            columns = {
-                str(row["name"])
-                for row in connection.execute("PRAGMA table_info(automation_actions)").fetchall()
-            }
-            if "retryable" not in columns:
-                connection.execute(
-                    """
-                    ALTER TABLE automation_actions
-                    ADD COLUMN retryable INTEGER NOT NULL DEFAULT 1
-                    """
-                )
-            connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_automation_actions_usage
-                ON automation_actions (status, retryable, created_at, action_type)
-                """
-            )
-            connection.commit()
+            ensure_state_schema(connection, self._database_path)
         finally:
             self._release(connection)
 
@@ -304,12 +268,7 @@ class ActionLedger:
 
     @staticmethod
     def _new_connection(database_path: str) -> sqlite3.Connection:
-        connection = sqlite3.connect(database_path, timeout=10.0)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        if database_path != ":memory:":
-            connection.execute("PRAGMA journal_mode = WAL")
-        return connection
+        return open_state_connection(database_path)
 
     def _release(self, connection: sqlite3.Connection) -> None:
         if self._database_path != ":memory:":
