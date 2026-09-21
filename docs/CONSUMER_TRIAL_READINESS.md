@@ -17,13 +17,29 @@ instabotai trial-readiness
 Static readiness performs no external AI or Instagram request. It verifies:
 
 - the installed InstabotAI runtime and package entrypoint;
-- a genuinely durable SQLite path, including integrity plus a transactional write probe against `INSTABOTAI_STATE_DB_PATH`;
+- a genuinely durable SQLite path, current schema contract, integrity, and a transactional write probe against `INSTABOTAI_STATE_DB_PATH`;
 - configured AI provider/model/base URL;
 - complete, non-empty credentials for the selected Instagram provider;
 - optional Crawl4AI package availability;
 - globally required human write approval for the consumer-trial phase;
 - non-zero bounded daily write capacity;
 - secret-free result serialization.
+
+Before evaluating durable state, readiness uses the canonical backup-first schema authority to initialize a missing filesystem database or upgrade an older supported schema. This is the same migration path used by normal application startup. A database from a newer unsupported schema, a structurally invalid current schema, a failed backup, or a failed integrity check remains a readiness blocker.
+
+Use the non-mutating preflight when you need to inspect state before allowing any upgrade:
+
+```bash
+instabotai state-check
+```
+
+Use the explicit migration command when an operator wants to control the upgrade point:
+
+```bash
+instabotai state-upgrade
+```
+
+See [STATE_UPGRADES.md](STATE_UPGRADES.md) for schema history, backup/restore behavior, downgrade protection, and non-root Docker volume ownership.
 
 `INSTABOTAI_STATE_DB_PATH=:memory:` is intentionally a blocker. In-memory SQLite is useful in tests but cannot preserve the audit, campaign, quota, idempotency, and outcome state required for a real consumer trial.
 
@@ -142,34 +158,29 @@ The Quality Gate verifies readiness from three packaging paths:
 2. a freshly built wheel installed into a clean virtual environment; and
 3. the production Docker image running as its non-root application user.
 
-The wheel/container readiness smoke uses non-secret CI-only placeholder provider values and static readiness. It proves packaging, command registration, durable SQLite state creation, policy defaults, and the readiness contract without impersonating a successful authenticated Instagram or AI call.
+The wheel and container paths now exercise **legacy-state upgrades**, not only fresh database creation. They prove that a representative pre-versioned action ledger can be detected by non-mutating `state-check`, upgraded with a verified backup, re-inspected at the current schema, preserve its legacy row, and then pass static readiness. The container path performs the same migration through a writable mounted state directory owned for the image's non-root runtime user.
 
 Authenticated live-provider evidence is intentionally separate from repository CI because real credentials must not be embedded in public build configuration.
 
-The readiness slice was validated on exact candidate `12f93f1d5647ff173c19fb3dd88d94a1ca425638` by Quality Gate #153 before merge to `master@d7181ed4eb957538a2a3c93453dcd54d416e9b5c`:
-
-- Ruff green;
-- strict mypy green across 27 production files;
-- 66 tests passed;
-- clean-wheel `trial-readiness` green;
-- production-container `doctor` + `trial-readiness` green;
-- containerized consumer `/healthz` green.
+The readiness slice was originally validated on exact candidate `12f93f1d5647ff173c19fb3dd88d94a1ca425638` by Quality Gate #153 before merge to `master@d7181ed4eb957538a2a3c93453dcd54d416e9b5c`. The later durable-state slice extends that gate with canonical schema ownership and real wheel/container upgrade proof.
 
 ## Consumer-trial release sequence
 
 Before a supervised real-account trial:
 
 1. install the exact candidate package/image;
-2. configure the intended AI and Instagram provider;
-3. keep `INSTABOTAI_REQUIRE_WRITE_APPROVAL=true`;
-4. enable only the daily action limits required for the trial;
-5. run `instabotai trial-readiness`;
-6. run `instabotai trial-readiness --live`;
-7. inspect the same readiness report in the consumer console;
-8. perform a reviewed AI plan with real evidence;
-9. approve only the intended durable campaign job;
-10. execute through the canonical write path;
-11. verify the provider result and ledger state;
-12. record business outcome only after the real-world result is observed.
+2. configure the intended durable state path and run `instabotai state-check` when upgrading an existing install;
+3. if migration is required, run `instabotai state-upgrade` and retain the verified backup;
+4. configure the intended AI and Instagram provider;
+5. keep `INSTABOTAI_REQUIRE_WRITE_APPROVAL=true`;
+6. enable only the daily action limits required for the trial;
+7. run `instabotai trial-readiness`;
+8. run `instabotai trial-readiness --live`;
+9. inspect the same readiness report in the consumer console;
+10. perform a reviewed AI plan with real evidence;
+11. approve only the intended durable campaign job;
+12. execute through the canonical write path;
+13. verify the provider result and ledger state;
+14. record business outcome only after the real-world result is observed.
 
 A failed readiness check should be corrected at its owning boundary. It must not be bypassed by adding another provider, scheduler, agent, or UI-specific execution path.
