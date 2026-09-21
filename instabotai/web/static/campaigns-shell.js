@@ -67,18 +67,27 @@
           </article>
         </div>
         <article class="panel campaign-jobs-panel">
-          <div class="panel-heading"><div><p class="eyebrow">Approval and execution</p><h3>Campaign jobs</h3><p>Inspect every reviewed action, authorize it deliberately, execute through policy, and record the actual outcome.</p></div></div>
+          <div class="panel-heading"><div><p class="eyebrow">Approval and execution</p><h3>Campaign jobs</h3><p>Inspect every reviewed action, authorize it deliberately, execute through policy, export its secret-free evidence, and record the actual outcome.</p></div></div>
           <div id="campaign-job-list" class="campaign-job-list"><div class="empty-state">No campaign jobs loaded yet.</div></div>
         </article>`;
       main.insertBefore(section, decisionView || null);
     }
   }
 
+  const initializeWorkspace = () => {
+    if (document.readyState !== "loading") initializeCampaignWorkspace();
+  };
+
   const module = document.createElement("script");
   module.src = "/assets/campaigns.js";
   module.async = false;
   module.addEventListener("load", () => {
-    if (document.readyState !== "loading") initializeCampaignWorkspace();
+    const evidenceModule = document.createElement("script");
+    evidenceModule.src = "/assets/trial-evidence.js";
+    evidenceModule.async = false;
+    evidenceModule.addEventListener("load", initializeWorkspace, { once: true });
+    evidenceModule.addEventListener("error", initializeWorkspace, { once: true });
+    document.head.append(evidenceModule);
   });
   document.head.append(module);
 })();

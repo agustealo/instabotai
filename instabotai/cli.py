@@ -15,6 +15,12 @@ from rich.console import Console
 
 from instabotai.application import InstabotApplication
 from instabotai.campaigns import CampaignMode
+from instabotai.evidence import (
+    TrialEvidenceError,
+    load_evidence_bundle,
+    verify_evidence_bundle,
+    write_evidence_bundle,
+)
 from instabotai.intelligence import EvidenceItem
 from instabotai.readiness import ConsumerTrialReadinessService
 from instabotai.settings import get_settings
@@ -107,6 +113,88 @@ def trial_readiness(
     )
     console.print_json(report.model_dump_json())
     if not report.ready:
+        raise typer.Exit(code=2)
+
+
+@app.command("trial-evidence")
+def trial_evidence(
+    job_id: Annotated[str, typer.Argument(help="Durable campaign job ID to export.")],
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            dir_okay=False,
+            help="Destination JSON file. Defaults to trial-evidence-<job-id>.json.",
+        ),
+    ] = None,
+    live: Annotated[
+        bool,
+        typer.Option(
+            "--live/--static",
+            help="Include genuine AI and read-only Instagram readiness probes.",
+        ),
+    ] = False,
+    require_research: Annotated[
+        bool,
+        typer.Option(
+            "--require-research/--research-optional",
+            help="Treat research support as required in the embedded readiness report.",
+        ),
+    ] = False,
+) -> None:
+    """Export a secret-free, tamper-evident evidence bundle for one trial job."""
+
+    async def run() -> None:
+        try:
+            bundle = await _service().trial_evidence(
+                job_id,
+                live=live,
+                require_research=require_research,
+            )
+        except TrialEvidenceError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        destination = output or Path(f"trial-evidence-{job_id}.json")
+        written = write_evidence_bundle(bundle, destination)
+        verification = verify_evidence_bundle(bundle)
+        console.print_json(
+            json.dumps(
+                {
+                    "path": str(written),
+                    "bundle_id": bundle.bundle_id,
+                    "job_id": bundle.job_id,
+                    "digest": bundle.integrity.digest,
+                    "verified": verification.valid,
+                    "readiness_ready": bundle.readiness.ready,
+                    "package_sha256": bundle.runtime.package_sha256,
+                }
+            )
+        )
+
+    asyncio.run(run())
+
+
+@app.command("trial-evidence-verify")
+def trial_evidence_verify(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Evidence JSON file to verify.",
+        ),
+    ],
+) -> None:
+    """Verify that a trial evidence JSON bundle has not changed since export."""
+
+    try:
+        bundle = load_evidence_bundle(path)
+    except TrialEvidenceError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    verification = verify_evidence_bundle(bundle)
+    console.print_json(verification.model_dump_json())
+    if not verification.valid:
         raise typer.Exit(code=2)
 
 

@@ -35,7 +35,7 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Ruff
-        run: python -m ruff check instabotai tests
+        run: python -m ruff check instabotai tests scripts
 
       - name: Mypy
         run: python -m mypy instabotai
@@ -111,7 +111,7 @@ jobs:
           instabotai doctor
           python -c "from instabotai.web import create_app; assert create_app().title == 'InstabotAI Consumer Console'"
 
-      - name: Wheel install and legacy-state upgrade smoke
+      - name: Wheel install, legacy upgrade, and evidence smoke
         run: |
           rm -rf dist /tmp/instabotai-wheel-smoke
           python -m pip wheel . --no-deps --wheel-dir dist
@@ -191,7 +191,28 @@ jobs:
           INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
             /tmp/instabotai-wheel-smoke/bin/instabotai trial-readiness
 
-      - name: Container legacy-state upgrade and runtime smoke
+          /tmp/instabotai-wheel-smoke/bin/python scripts/seed_trial_evidence_smoke.py \
+            --database /tmp/instabotai-wheel-smoke/legacy-state.sqlite3 \
+            --job-id-file /tmp/instabotai-wheel-smoke/evidence-job-id.txt
+          evidence_job_id=$(tr -d '\r\n' </tmp/instabotai-wheel-smoke/evidence-job-id.txt)
+          test -n "$evidence_job_id"
+
+          INSTABOTAI_STATE_DB_PATH=/tmp/instabotai-wheel-smoke/legacy-state.sqlite3 \
+          INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
+          INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
+            /tmp/instabotai-wheel-smoke/bin/instabotai trial-evidence "$evidence_job_id" \
+              --output /tmp/instabotai-wheel-smoke/trial-evidence.json
+          /tmp/instabotai-wheel-smoke/bin/instabotai trial-evidence-verify \
+            /tmp/instabotai-wheel-smoke/trial-evidence.json
+          /tmp/instabotai-wheel-smoke/bin/python - <<'PY'
+          from pathlib import Path
+
+          text = Path("/tmp/instabotai-wheel-smoke/trial-evidence.json").read_text(encoding="utf-8")
+          assert "ci-evidence-secret" not in text
+          assert '"signed": false' in text
+          PY
+
+      - name: Container legacy upgrade, evidence, and runtime smoke
         run: |
           docker build -t instabotai-ci .
           docker run --rm instabotai-ci doctor
@@ -232,6 +253,32 @@ jobs:
             -e INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
             -e INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
             instabotai-ci trial-readiness
+
+          docker run --rm -i \
+            --entrypoint python \
+            -v "$PWD/scripts/seed_trial_evidence_smoke.py:/ci/seed_trial_evidence_smoke.py:ro" \
+            -v /tmp/instabotai-container-state:/data \
+            instabotai-ci /ci/seed_trial_evidence_smoke.py \
+              --database /data/state.sqlite3 \
+              --job-id-file /data/evidence-job-id.txt
+          container_evidence_job_id=$(tr -d '\r\n' </tmp/instabotai-container-state/evidence-job-id.txt)
+          test -n "$container_evidence_job_id"
+
+          docker run --rm \
+            -v /tmp/instabotai-container-state:/data \
+            -e INSTABOTAI_STATE_DB_PATH=/data/state.sqlite3 \
+            -e INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=ci-readiness-token \
+            -e INSTABOTAI_INSTAGRAM_ACCOUNT_ID=ci-account \
+            instabotai-ci trial-evidence "$container_evidence_job_id" \
+              --output /data/trial-evidence.json
+          docker run --rm \
+            -v /tmp/instabotai-container-state:/data \
+            instabotai-ci trial-evidence-verify /data/trial-evidence.json
+          docker run --rm \
+            --entrypoint python \
+            -v /tmp/instabotai-container-state:/data \
+            instabotai-ci -c \
+              "from pathlib import Path; text=Path('/data/trial-evidence.json').read_text(encoding='utf-8'); assert 'ci-evidence-secret' not in text; assert '\"signed\": false' in text"
 
           container_id=$(docker run -d \
             -p 127.0.0.1:8765:8765 \

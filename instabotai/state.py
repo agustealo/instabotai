@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 from instabotai.domain import ActionType, PlannedAction, UsageSnapshot
 from instabotai.storage import ensure_state_schema, open_state_connection
 
@@ -18,6 +20,23 @@ class DuplicateActionError(RuntimeError):
 
 class DailyLimitExceededError(RuntimeError):
     """Raised when a transactional daily reservation limit is exhausted."""
+
+
+class ActionLedgerRecord(BaseModel):
+    """Typed read-only projection of one durable action ledger entry."""
+
+    idempotency_key: str
+    action_type: ActionType
+    target_id: str | None = None
+    status: str
+    retryable: bool
+    reason: str
+    confidence: float
+    payload: dict[str, Any]
+    created_at: datetime
+    executed_at: datetime | None = None
+    provider_result: Any | None = None
+    error: str | None = None
 
 
 class ActionLedger:
@@ -197,16 +216,60 @@ class ActionLedger:
             comments_moderated_today=counts.get(ActionType.HIDE_COMMENT.value, 0),
         )
 
-    def status(self, idempotency_key: str) -> str | None:
+    def get_record(self, idempotency_key: str) -> ActionLedgerRecord | None:
+        """Return the complete audit projection for one idempotency key."""
+
         connection = self._connect()
         try:
             row = connection.execute(
-                "SELECT status FROM automation_actions WHERE idempotency_key = ?",
+                """
+                SELECT idempotency_key, action_type, target_id, status, retryable,
+                       reason, confidence, payload_json, created_at, executed_at,
+                       provider_result, error
+                FROM automation_actions
+                WHERE idempotency_key = ?
+                """,
                 (idempotency_key,),
             ).fetchone()
         finally:
             self._release(connection)
-        return str(row["status"]) if row is not None else None
+        if row is None:
+            return None
+
+        provider_result: Any | None = None
+        raw_provider_result = row["provider_result"]
+        if raw_provider_result is not None:
+            try:
+                provider_result = json.loads(str(raw_provider_result))
+            except json.JSONDecodeError:
+                provider_result = str(raw_provider_result)
+
+        raw_payload = json.loads(str(row["payload_json"]))
+        if not isinstance(raw_payload, dict):
+            raise RuntimeError("action ledger payload is not a JSON object")
+
+        return ActionLedgerRecord(
+            idempotency_key=str(row["idempotency_key"]),
+            action_type=ActionType(str(row["action_type"])),
+            target_id=str(row["target_id"]) if row["target_id"] is not None else None,
+            status=str(row["status"]),
+            retryable=bool(row["retryable"]),
+            reason=str(row["reason"]),
+            confidence=float(row["confidence"]),
+            payload={str(key): value for key, value in raw_payload.items()},
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+            executed_at=(
+                datetime.fromisoformat(str(row["executed_at"]))
+                if row["executed_at"] is not None
+                else None
+            ),
+            provider_result=provider_result,
+            error=str(row["error"]) if row["error"] is not None else None,
+        )
+
+    def status(self, idempotency_key: str) -> str | None:
+        record = self.get_record(idempotency_key)
+        return record.status if record is not None else None
 
     def close(self) -> None:
         if self._memory_connection is not None:
