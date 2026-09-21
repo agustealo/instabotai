@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     environment: str = "development"
     state_db_path: str = "data/instabotai.sqlite3"
 
+    # Canonical AI runtime. Ollama provides a genuine local-model default while
+    # the OpenAI-compatible adapter supports hosted or self-hosted model servers.
+    ai_provider: Literal["ollama", "openai_compatible"] = "ollama"
+    ai_model: str = "llama3.2:3b"
+    ai_base_url: str = "http://127.0.0.1:11434"
+    ai_api_key: SecretStr | None = None
+    ai_timeout_seconds: float = Field(default=90.0, ge=1.0, le=300.0)
+    ai_temperature: float = Field(default=0.15, ge=0.0, le=1.0)
+    ai_max_retries: int = Field(default=2, ge=0, le=5)
+    ai_max_context_chars: int = Field(default=24_000, ge=4_000, le=200_000)
+    ai_min_decision_score: float = Field(default=0.65, ge=0.0, le=1.0)
+    ai_enable_critic: bool = True
+
     instagram_provider: Literal["official", "private"] = "official"
 
     meta_graph_api_version: str = "v26.0"
@@ -93,6 +106,14 @@ class Settings(BaseSettings):
             if domain:
                 normalized.append(domain)
         return tuple(dict.fromkeys(normalized))
+
+    @field_validator("ai_model", "ai_base_url")
+    @classmethod
+    def validate_ai_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("AI model and base URL values must not be empty")
+        return normalized
 
 
 @lru_cache(maxsize=1)
