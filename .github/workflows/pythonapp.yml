@@ -202,6 +202,10 @@ jobs:
           test -n "$legacy_backup"
           cp "$legacy_backup" /tmp/instabotai-container-state/state.sqlite3
 
+          container_uid=$(docker run --rm instabotai-ci id -u)
+          container_gid=$(docker run --rm instabotai-ci id -g)
+          sudo chown -R "$container_uid:$container_gid" /tmp/instabotai-container-state
+
           set +e
           docker run --rm \
             -v /tmp/instabotai-container-state:/data \
