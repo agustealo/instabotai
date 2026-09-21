@@ -1,6 +1,11 @@
 """Consumer campaign workspace asset and shell regressions."""
 
+from pathlib import Path
+import shutil
+import subprocess
+
 import httpx
+import pytest
 
 from instabotai.settings import Settings
 from instabotai.web import create_app
@@ -23,6 +28,7 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert loader.status_code == 200
     assert "/assets/app-core.js" in loader.text
     assert "/assets/campaigns-shell.js" in loader.text
+    assert "__instabotaiDomReady" in loader.text
     assert core.status_code == 200
     assert "function initialize()" in core.text
 
@@ -39,3 +45,19 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert stylesheet.status_code == 200
     assert ".campaign-job-card" in stylesheet.text
     assert ".outcome-form" in stylesheet.text
+
+
+def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable in this environment")
+
+    static_dir = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    for asset in ("app.js", "app-core.js", "campaigns-shell.js", "campaigns.js"):
+        result = subprocess.run(
+            [node, "--check", str(static_dir / asset)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"{asset}: {result.stderr}"
