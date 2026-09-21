@@ -1,7 +1,13 @@
 import json
 
 from instabotai.domain import ApprovalState
-from instabotai.intelligence import EvidenceItem, ExperienceStore, IntelligenceEngine, ModelReply
+from instabotai.intelligence import (
+    DecisionJournal,
+    EvidenceItem,
+    ExperienceStore,
+    IntelligenceEngine,
+    ModelReply,
+)
 from instabotai.settings import Settings
 
 
@@ -102,6 +108,28 @@ async def test_ai_planner_builds_pending_policy_governed_action() -> None:
     assert action.approval is ApprovalState.PENDING
     assert action.idempotency_key.startswith("ai-")
     assert action.payload["caption"] == "Product update"
+
+
+async def test_ai_decision_is_journaled_with_stable_identity() -> None:
+    journal = DecisionJournal(":memory:")
+    engine = IntelligenceEngine(
+        settings=settings(),
+        model=ScriptedReasoningModel([planner_candidate(), supportive_review()]),
+        experience=ExperienceStore(":memory:"),
+        journal=journal,
+    )
+
+    decision = await engine.reason(
+        objective="Publish only from reviewed evidence.",
+        evidence=evidence(),
+        allowed_actions=("publish_image",),
+    )
+
+    stored = journal.get(decision.decision_id)
+    assert stored is not None
+    assert stored.decision_id == decision.decision_id
+    assert stored.model_dump(mode="json") == decision.model_dump(mode="json")
+    assert journal.recent(1)[0].decision_id == decision.decision_id
 
 
 async def test_ai_cannot_escape_caller_allowed_action_vocabulary() -> None:
