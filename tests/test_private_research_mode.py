@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import parse_qsl, urlparse
 
 import pytest
 
@@ -78,6 +79,8 @@ def test_research_client_accepts_device_headers_handlers_and_trace(tmp_path: Pat
 
     client.request_log(FakeResponse())
     record = json.loads(trace.read_text().strip())
+    query = dict(parse_qsl(urlparse(record["url"]).query, keep_blank_values=True))
+
     assert record["status"] == 200
     assert "secret" not in record["url"]
-    assert "[redacted]" in record["url"]
+    assert query["access_token"] == "[redacted]"
