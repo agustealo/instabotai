@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from instabotai.intelligence.domain import ModelReply
+from instabotai.intelligence.domain import IntelligenceProbe, ModelReply
 from instabotai.settings import Settings
 
 
@@ -164,6 +164,34 @@ def build_reasoning_model(settings: Settings) -> JSONReasoningModel:
     if settings.ai_provider == "openai_compatible":
         return OpenAICompatibleReasoningModel(settings)
     raise IntelligenceProviderError(f"unsupported AI provider: {settings.ai_provider}")
+
+
+async def probe_reasoning_model(model: JSONReasoningModel) -> IntelligenceProbe:
+    """Perform a genuine structured inference round trip against the configured model."""
+
+    reply = await model.complete(
+        system_prompt=(
+            "You are a runtime capability probe. Return exactly one JSON object and no prose. "
+            "Do not use tools or external data."
+        ),
+        user_prompt=(
+            'Return exactly {"ok":true,"capability":"reasoning"}. '
+            "This is a connectivity and structured-output check."
+        ),
+    )
+    payload = parse_json_object(reply.text)
+    if payload.get("ok") is not True:
+        raise IntelligenceProviderError("reasoning model probe did not confirm ok=true")
+    capability = payload.get("capability")
+    if not isinstance(capability, str) or not capability.strip():
+        raise IntelligenceProviderError("reasoning model probe omitted capability")
+    return IntelligenceProbe(
+        ok=True,
+        capability=capability.strip(),
+        provider=reply.provider,
+        model=reply.model,
+        latency_ms=reply.latency_ms,
+    )
 
 
 def parse_json_object(value: str) -> dict[str, Any]:
