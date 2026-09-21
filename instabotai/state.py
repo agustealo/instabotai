@@ -35,7 +35,8 @@ class ActionLedger:
         """Reserve one action atomically against idempotency and daily quota."""
 
         payload = json.dumps(action.payload, sort_keys=True, separators=(",", ":"))
-        day_start = self._day_start().isoformat()
+        reserved_at = datetime.now(UTC)
+        day_start = self._day_start(reserved_at).isoformat()
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -84,7 +85,7 @@ class ActionLedger:
                     action.reason,
                     action.confidence,
                     payload,
-                    action.created_at.astimezone(UTC).isoformat(),
+                    reserved_at.isoformat(),
                 ),
             )
             connection.commit()
