@@ -195,7 +195,9 @@ def _response_object(response: httpx.Response) -> dict[str, Any]:
     try:
         payload: Any = response.json()
     except ValueError as exc:
-        raise IntelligenceProviderError("reasoning provider returned non-JSON HTTP response") from exc
+        raise IntelligenceProviderError(
+            "reasoning provider returned non-JSON HTTP response"
+        ) from exc
     if not isinstance(payload, dict):
         raise IntelligenceProviderError("reasoning provider response was not a JSON object")
     return payload
