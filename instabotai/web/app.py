@@ -24,6 +24,7 @@ from instabotai.campaigns import (
     CampaignStateError,
 )
 from instabotai.domain import ResearchReport
+from instabotai.evidence import TrialEvidenceBundle
 from instabotai.intelligence import EvidenceItem, IntelligenceDecision, IntelligenceProbe
 from instabotai.intelligence.providers import IntelligenceProviderError
 from instabotai.providers.instagram import InstagramProviderError
@@ -82,6 +83,13 @@ class ApplicationService(Protocol):
         reward: float,
         note: str = "",
     ) -> CampaignJob: ...
+    async def trial_evidence(
+        self,
+        job_id: str,
+        *,
+        live: bool = False,
+        require_research: bool = False,
+    ) -> TrialEvidenceBundle: ...
 
 
 class PlanRequest(BaseModel):
@@ -319,6 +327,20 @@ def create_app(
                 limit=limit,
             )
         )
+
+    @app.get("/api/campaign-jobs/{job_id}/evidence", response_model=TrialEvidenceBundle)
+    async def trial_evidence(
+        job_id: str,
+        request: Request,
+        live: bool = Query(default=False),
+        require_research: bool = Query(default=False),
+    ) -> TrialEvidenceBundle:
+        async with request.app.state.readiness_slots:
+            return await application_service.trial_evidence(
+                job_id,
+                live=live,
+                require_research=require_research,
+            )
 
     @app.post("/api/campaign-jobs/{job_id}/approve", response_model=CampaignJob)
     async def approve_job(job_id: str) -> CampaignJob:
