@@ -8,11 +8,33 @@ The 2.0 line does **not** carry forward the old mass-engagement Flask bot archit
 
 **2.0.0 alpha / active revival**
 
-The current implementation provides the modern runtime, genuine AI decision engine, provider layer, research layer, durable state, CLI, decision audit, and quality gates. A consumer UI and higher-level campaign/workflow scheduler are still being built. The alpha should not be treated as unattended production automation.
+The current implementation provides the modern runtime, genuine AI decision engine, provider layer, research layer, durable state, CLI, decision audit, consumer web console, and quality gates. The higher-level campaign/workflow scheduler is still being built. The alpha should not be treated as unattended production automation.
+
+## Consumer console
+
+InstabotAI now includes a real local web GUI that uses the same canonical application services as the CLI. It does not duplicate reasoning, provider, research, policy, or durable-state logic.
+
+Launch it with:
+
+```bash
+instabotai ui
+```
+
+The console binds to `127.0.0.1:8765` by default and opens in your browser. A non-loopback bind is rejected unless `INSTABOTAI_UI_ALLOW_REMOTE=true` is deliberately configured.
+
+The shipped surfaces are:
+
+- **Overview**: secret-free runtime readiness, AI/provider status, decision threshold, research budget, and write-policy state.
+- **AI Studio**: genuine model probe, evidence authoring, bounded JSON context, planner + critic execution, score/review inspection, abstention state, and pending-action inspection.
+- **Decision Audit**: durable `DecisionJournal` browsing and filtering with stable decision IDs.
+- **Adaptive Research**: Crawl4AI-backed public-web research with confidence, relevance, blocked URLs, and failed URLs.
+- **Account**: read-only profile retrieval through the selected Instagram provider plus credential-readiness state without exposing secrets.
+
+The consumer console intentionally has **no direct write-execution button** yet. AI-selected actions remain pending and continue through the canonical approval/policy/execution path.
 
 ## Verified product surfaces
 
-The screenshots below are derived from the **real exact-head runtime and CI output**, not illustrative dashboards or mock product screens. The consumer GUI is not yet shipped, so this documentation intentionally shows only surfaces that exist today.
+The repository screenshots are derived from real exact-head runtime and CI output, not illustrative dashboards or mock product screens.
 
 ### Packaged runtime diagnostics
 
@@ -22,11 +44,11 @@ The screenshots below are derived from the **real exact-head runtime and CI outp
 
 ### Exact-head engineering gate
 
-The current revival is gated by the same package, strict typing, test, and container path consumers receive.
+The revival is gated by the same package, strict typing, test, and container path consumers receive.
 
 ![InstabotAI exact-head quality gate](docs/screenshots/quality-gate.svg)
 
-See [docs/PRODUCT_SURFACES.md](docs/PRODUCT_SURFACES.md) for the screenshot provenance, operator-surface matrix, and the rule that documentation must not depict product UI that is not actually implemented.
+See [docs/PRODUCT_SURFACES.md](docs/PRODUCT_SURFACES.md) for screenshot provenance and the current operator-surface matrix.
 
 ## Architecture
 
@@ -157,6 +179,12 @@ Extras can be combined, for example `.[private,research,dev]`.
 
 ## Quick start
 
+Launch the consumer UI:
+
+```bash
+instabotai ui
+```
+
 Validate configuration without contacting a model or Instagram:
 
 ```bash
@@ -200,6 +228,22 @@ The evidence file is a JSON array of typed evidence records containing `evidence
 ## Configuration
 
 Runtime settings use the `INSTABOTAI_` environment prefix. Secrets should be provided through environment variables or an operator-controlled local secret mechanism, never committed to Git.
+
+### Consumer UI
+
+```bash
+export INSTABOTAI_UI_HOST='127.0.0.1'
+export INSTABOTAI_UI_PORT='8765'
+export INSTABOTAI_UI_OPEN_BROWSER='true'
+```
+
+Remote binds require the explicit opt-in below and should only be used in an environment where network access is separately controlled:
+
+```bash
+export INSTABOTAI_UI_ALLOW_REMOTE='true'
+```
+
+AI and research browser operations have separate bounded concurrency controls through `INSTABOTAI_UI_AI_MAX_CONCURRENCY` and `INSTABOTAI_UI_RESEARCH_MAX_CONCURRENCY`.
 
 ### AI runtime
 
@@ -273,7 +317,9 @@ docker build -t instabotai-ci .
 docker run --rm instabotai-ci doctor
 ```
 
-The tests exercise planner/critic behavior, fail-closed invalid output, outcome learning, durable decision journaling, allowed-action containment, actual Ollama and OpenAI-compatible HTTP request contracts, provider failure propagation, policy boundaries, durable action state, and the Instagram provider adapters.
+The gate also boots the consumer console inside the built Docker image and requires its `/healthz` endpoint to become healthy.
+
+The tests exercise planner/critic behavior, fail-closed invalid output, outcome learning, durable decision journaling, allowed-action containment, actual Ollama and OpenAI-compatible HTTP request contracts, provider failure propagation, policy boundaries, durable action state, Instagram provider adapters, consumer API routing, secret-free runtime status, pending-action preservation, and remote-bind safety.
 
 Mypy runs in strict mode. The revival intentionally avoids parallel legacy compatibility logic, production mocks, and silent AI fallbacks. If model reasoning is unavailable or invalid, the intelligence engine abstains.
 
