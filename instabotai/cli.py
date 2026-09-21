@@ -16,6 +16,7 @@ from rich.console import Console
 from instabotai.application import InstabotApplication
 from instabotai.campaigns import CampaignMode
 from instabotai.intelligence import EvidenceItem
+from instabotai.readiness import ConsumerTrialReadinessService
 from instabotai.settings import get_settings
 from instabotai.web import create_app, validate_ui_bind
 
@@ -60,6 +61,34 @@ def doctor() -> None:
     """Report secret-free runtime configuration without external calls."""
 
     console.print_json(json.dumps(_service().doctor_payload()))
+
+
+@app.command("trial-readiness")
+def trial_readiness(
+    live: Annotated[
+        bool,
+        typer.Option("--live/--static", help="Run genuine AI and read-only Instagram probes."),
+    ] = False,
+    require_research: Annotated[
+        bool,
+        typer.Option(
+            "--require-research/--research-optional",
+            help="Treat the optional Crawl4AI research capability as a release blocker.",
+        ),
+    ] = False,
+) -> None:
+    """Evaluate consumer-trial readiness and return exit code 2 when blockers remain."""
+
+    settings = get_settings()
+    report = asyncio.run(
+        ConsumerTrialReadinessService(settings).evaluate(
+            live=live,
+            require_research=require_research,
+        )
+    )
+    console.print_json(report.model_dump_json())
+    if not report.ready:
+        raise typer.Exit(code=2)
 
 
 @app.command("ai-check")
