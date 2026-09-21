@@ -313,9 +313,10 @@ def _content_digest(value: Any) -> str:
 
 def _json_ready(value: Any) -> Any:
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        return _json_ready(value.model_dump(mode="json"))
     if isinstance(value, datetime):
-        return value.isoformat()
+        encoded = value.isoformat()
+        return f"{encoded[:-6]}Z" if encoded.endswith("+00:00") else encoded
     if isinstance(value, dict):
         return {str(key): _json_ready(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
