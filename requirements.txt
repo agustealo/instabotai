@@ -1,5 +1,0 @@
-instabot
-flask
-tensorflow
-opencv-python
-requests_toolbelt

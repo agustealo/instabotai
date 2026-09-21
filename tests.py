@@ -1,3 +1,0 @@
-import instabot
-
-print("test")
