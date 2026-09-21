@@ -6,7 +6,6 @@ import importlib.util
 import sqlite3
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -19,6 +18,11 @@ from instabotai.providers import (
     build_instagram_provider,
 )
 from instabotai.settings import Settings
+from instabotai.storage import (
+    StateSchemaError,
+    StateSchemaTooNewError,
+    upgrade_state_database,
+)
 
 ReadinessStatus = Literal["pass", "warn", "fail", "skip"]
 AIProbe = Callable[[], Awaitable[IntelligenceProbe]]
@@ -165,20 +169,47 @@ class ConsumerTrialReadinessService:
             )
 
         try:
-            path = Path(database_path).expanduser()
-            path.parent.mkdir(parents=True, exist_ok=True)
+            report = upgrade_state_database(database_path)
+        except StateSchemaTooNewError:
+            return ReadinessCheck(
+                key="state",
+                label="Durable state",
+                status="fail",
+                detail="SQLite state was created by a newer unsupported schema version.",
+                remediation=(
+                    "Install a compatible newer InstabotAI build or restore a backup created "
+                    "before the newer schema was installed. Do not downgrade this database in place."
+                ),
+            )
+        except (StateSchemaError, OSError, sqlite3.Error) as exc:
+            return ReadinessCheck(
+                key="state",
+                label="Durable state",
+                status="fail",
+                detail=(
+                    "SQLite state could not be initialized or upgraded safely "
+                    f"({type(exc).__name__})."
+                ),
+                remediation=(
+                    "Run `instabotai state-check`, verify filesystem permissions, and restore the "
+                    "latest verified pre-migration backup if integrity is not ok."
+                ),
+            )
+
+        if not report.ready:
+            return ReadinessCheck(
+                key="state",
+                label="Durable state",
+                status="fail",
+                detail=(
+                    f"SQLite schema v{report.schema_version} is not ready for required "
+                    f"v{report.target_version}; integrity={report.integrity}."
+                ),
+                remediation="Run `instabotai state-upgrade` before the consumer trial.",
+            )
+
+        try:
             with sqlite3.connect(database_path, timeout=5.0) as connection:
-                row = connection.execute("PRAGMA quick_check").fetchone()
-                if row is None or str(row[0]).lower() != "ok":
-                    return ReadinessCheck(
-                        key="state",
-                        label="Durable state",
-                        status="fail",
-                        detail="SQLite integrity check did not return ok.",
-                        remediation=(
-                            "Repair or replace the configured state database before a trial."
-                        ),
-                    )
                 connection.execute("BEGIN IMMEDIATE")
                 connection.execute(
                     "CREATE TEMP TABLE instabotai_readiness_probe (value INTEGER NOT NULL)"
@@ -192,14 +223,24 @@ class ConsumerTrialReadinessService:
                 key="state",
                 label="Durable state",
                 status="fail",
-                detail=f"SQLite state is not healthy and writable ({type(exc).__name__}).",
+                detail=f"SQLite state is not transactionally writable ({type(exc).__name__}).",
                 remediation="Verify INSTABOTAI_STATE_DB_PATH and filesystem permissions.",
             )
+
+        migration_note = (
+            " A verified pre-migration backup was created before this readiness check upgraded "
+            "existing state."
+            if report.backup_path is not None
+            else ""
+        )
         return ReadinessCheck(
             key="state",
             label="Durable state",
             status="pass",
-            detail=f"SQLite integrity and transactional write probe passed at {database_path}.",
+            detail=(
+                f"SQLite schema v{report.schema_version} is current, integrity is ok, and the "
+                f"transactional write probe passed.{migration_note}"
+            ),
         )
 
     def _ai_configuration_check(self) -> ReadinessCheck:
