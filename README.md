@@ -1,55 +1,87 @@
 # InstabotAI
 
-InstabotAI is being rebuilt as an adaptive Instagram intelligence and automation runtime with two interchangeable account providers, policy-governed writes, durable execution state, and optional Crawl4AI-powered public-web research.
+InstabotAI is being rebuilt as an adaptive AI decision and Instagram automation runtime with real model inference, evidence-grounded planning, independent critique, durable outcome learning, interchangeable account providers, policy-governed writes, durable execution state, and optional Crawl4AI-powered public-web research.
 
-The 2.0 line does **not** carry forward the old mass-engagement Flask bot architecture. The modern runtime is Python 3.12+, typed, test-gated, provider-oriented, and designed so account access, research, decision logic, policy, and execution remain separate systems.
+The 2.0 line does **not** carry forward the old mass-engagement Flask bot architecture. The modern runtime is Python 3.12+, typed, test-gated, provider-oriented, and designed so account access, research, AI reasoning, policy, memory, scheduling, and execution remain separate systems.
 
 ## Current status
 
 **2.0.0 alpha / active revival**
 
-The current implementation provides the new runtime foundation and CLI. A consumer UI and higher-level campaign/workflow layer are still being built. Do not treat the alpha as unattended production automation.
+The current implementation provides the modern runtime, real AI decision engine, provider layer, research layer, durable state, CLI, and quality gates. A consumer UI and higher-level campaign/workflow scheduler are still being built. Do not treat the alpha as unattended production automation.
 
 ## Architecture
 
 ```text
-Public-web sources                 Instagram account
-       |                                  |
-       v                                  v
-+------------------+             +-------------------+
-| AdaptiveResearch |             | Provider adapter  |
-| Crawl4AI         |             | official/private  |
-+--------+---------+             +---------+---------+
-         |                                 |
-         v                                 |
-+------------------+                       |
-| normalized       |                       |
-| research signal  |                       |
-+--------+---------+                       |
-         |                                 |
-         +------------+--------------------+
-                      v
-              +---------------+
-              | planned action|
-              +-------+-------+
-                      v
-              +---------------+
-              | policy gate   |
-              | approval      |
-              | confidence    |
-              | daily limits  |
-              +-------+-------+
-                      v
-              +---------------+
-              | SQLite ledger |
-              | idempotency   |
-              | audit state   |
-              +-------+-------+
-                      v
-              +---------------+
-              | provider write|
-              +---------------+
+Public-web sources                    Account/product context
+       |                                       |
+       v                                       v
++------------------+                   +-------------------+
+| AdaptiveResearch |                   | Typed evidence    |
+| Crawl4AI         |                   | bounded context   |
++--------+---------+                   +---------+---------+
+         |                                       |
+         +-------------------+-------------------+
+                             v
+                    +-------------------+
+                    | AI planner model  |
+                    | Ollama / hosted   |
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | schema validation |
+                    | allowed actions   |
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | deterministic     |
+                    | evidence/history  |
+                    | utility/risk score|
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | independent critic|
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | abstain OR        |
+                    | pending action    |
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | policy gate       |
+                    | approval/limits   |
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | SQLite ledger     |
+                    | idempotency/audit |
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | provider write    |
+                    +---------+---------+
+                              v
+                    +-------------------+
+                    | outcome feedback  |
+                    | ExperienceStore   |
+                    +-------------------+
 ```
+
+## Genuine AI decision system
+
+The AI layer performs actual language-model inference rather than routing to hard-coded pseudo-intelligence. It supports two interchangeable reasoning providers:
+
+- **Ollama** for local models. This is the default runtime and points to `http://127.0.0.1:11434` unless configured otherwise.
+- **OpenAI-compatible** model servers for hosted or self-hosted deployments exposing a chat-completions compatible endpoint.
+
+Model output is never execution authority. The intelligence engine applies a second critic pass, validates responses against typed schemas, rejects actions outside the caller-supplied vocabulary, scores evidence support and risk deterministically, incorporates bounded historical outcomes, and abstains when the final reviewed score does not meet the configured threshold.
+
+Real observed outcomes are stored in `ExperienceStore` and influence later scoring only when they are relevant to the current objective. History cannot replace current evidence or bypass policy.
+
+An AI-selected Instagram candidate is converted to a `PlannedAction` with `ApprovalState.PENDING`. The model cannot approve its own write, disable daily limits, bypass idempotency, or call around `AutomationService`.
+
+See `docs/INTELLIGENCE_ARCHITECTURE.md` for the full contract and authority model.
 
 ### Instagram providers
 
@@ -117,9 +149,39 @@ instabotai research "local fitness marketing trends" \
   --seed https://example.com/fitness-market-report
 ```
 
+Run genuine AI planning without executing the proposed action:
+
+```bash
+instabotai plan "Publish the approved product announcement" \
+  --evidence-file ./evidence.json
+```
+
+The evidence file is a JSON array of typed evidence records containing `evidence_id`, `source`, `content`, optional `confidence`, and optional `observed_at`. An optional `--context-file` accepts a bounded JSON object with additional campaign/account context. The command returns the auditable intelligence decision and a pending action only when the reviewed score passes the configured threshold.
+
 ## Configuration
 
 Runtime settings use the `INSTABOTAI_` environment prefix. Secrets should be provided through environment variables or an operator-controlled local secret mechanism, never committed to Git.
+
+### AI runtime
+
+Local Ollama is the default:
+
+```bash
+export INSTABOTAI_AI_PROVIDER=ollama
+export INSTABOTAI_AI_MODEL='llama3.2:3b'
+export INSTABOTAI_AI_BASE_URL='http://127.0.0.1:11434'
+```
+
+For an OpenAI-compatible hosted or self-hosted server:
+
+```bash
+export INSTABOTAI_AI_PROVIDER=openai_compatible
+export INSTABOTAI_AI_MODEL='your-model-id'
+export INSTABOTAI_AI_BASE_URL='https://your-model-server.example'
+export INSTABOTAI_AI_API_KEY='...'
+```
+
+The AI runtime also exposes explicit controls for model timeout, temperature, retries, context size, critic enablement, and the minimum final decision score. `instabotai doctor` reports configuration state without printing the API key.
 
 ### Official provider
 
@@ -161,20 +223,24 @@ Direct provider objects are integration adapters, not the application orchestrat
 
 ## Development gates
 
-The canonical GitHub Actions quality gate runs:
+The canonical GitHub Actions quality gate runs the complete modern source tree:
 
 ```bash
-python -m ruff check ...
+python -m ruff check instabotai tests
 python -m mypy instabotai
 python -m pytest
 instabotai doctor
+docker build -t instabotai-ci .
+docker run --rm instabotai-ci doctor
 ```
 
-Mypy runs in strict mode. The revival is intentionally avoiding parallel legacy compatibility logic and silent mock fallbacks.
+Mypy runs in strict mode. The revival intentionally avoids parallel legacy compatibility logic, production mocks, and silent AI fallbacks. If model reasoning is unavailable or invalid, the intelligence engine abstains.
 
 ## Project direction
 
-The next product layers are a durable workflow/campaign engine, richer Instagram read models and media support, intelligence/ranking services, event ingestion, observability, and a modern consumer-facing control surface. Those layers will build on the provider/policy/ledger authority already established here rather than reintroducing mass-action scripts.
+The next product layer is the durable campaign/workflow scheduler. It will gather live campaign state, research signals, provider observations, policy usage, and previous outcomes and pass that evidence into the single `IntelligenceEngine`. It will not implement a second reasoning stack.
+
+The same objective/evidence/candidate/critique/outcome contracts are intentionally domain-neutral so later product surfaces can reuse the intelligence substrate beyond the initial Instagram workflow without duplicating model orchestration.
 
 ## Legal
 
