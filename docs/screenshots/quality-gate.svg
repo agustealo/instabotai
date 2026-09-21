@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="684" viewBox="0 0 1600 684">
+<rect width="100%" height="100%" fill="#0f1115"/>
+<rect width="100%" height="86" fill="#1d2026"/>
+<circle cx="38" cy="38" r="9" fill="#ff5f56"/><circle cx="72" cy="38" r="9" fill="#ffbd2e"/><circle cx="106" cy="38" r="9" fill="#27c93f"/>
+<text x="150" y="49" fill="#ebeef5" font-size="30" font-weight="700" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">InstabotAI · exact-head release evidence</text>
+<text x="44" y="130" fill="#67c5ff" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">GitHub Actions · Quality Gate #104</text>
+<text x="44" y="164" fill="#9ca3af" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Exact head: 6f74a5b0fb1ffbc22e235597a06a173d191939d6</text>
+<text x="44" y="232" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ actions/checkout@v7</text>
+<text x="44" y="266" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ actions/setup-python@v7 · Python 3.12.14</text>
+<text x="44" y="300" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ package + development dependencies</text>
+<text x="44" y="334" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ Ruff · all checks passed</text>
+<text x="44" y="368" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ strict mypy · Success: no issues found in 19 source files</text>
+<text x="44" y="402" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ pytest · 29 passed in 0.44s</text>
+<text x="44" y="436" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ instabotai doctor · package smoke</text>
+<text x="44" y="470" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ Docker image build</text>
+<text x="44" y="504" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">✓ Docker runtime · instabotai doctor</text>
+<text x="44" y="572" fill="#6dd384" font-size="24" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Conclusion: success</text>
+<text x="44" y="606" fill="#9ca3af" font-size="20" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">Source: exact-head GitHub Actions run #104</text>
+</svg>

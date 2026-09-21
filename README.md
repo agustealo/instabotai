@@ -8,7 +8,25 @@ The 2.0 line does **not** carry forward the old mass-engagement Flask bot archit
 
 **2.0.0 alpha / active revival**
 
-The current implementation provides the modern runtime, real AI decision engine, provider layer, research layer, durable state, CLI, and quality gates. A consumer UI and higher-level campaign/workflow scheduler are still being built. Do not treat the alpha as unattended production automation.
+The current implementation provides the modern runtime, genuine AI decision engine, provider layer, research layer, durable state, CLI, decision audit, and quality gates. A consumer UI and higher-level campaign/workflow scheduler are still being built. The alpha should not be treated as unattended production automation.
+
+## Verified product surfaces
+
+The screenshots below are derived from the **real exact-head runtime and CI output**, not illustrative dashboards or mock product screens. The consumer GUI is not yet shipped, so this documentation intentionally shows only surfaces that exist today.
+
+### Packaged runtime diagnostics
+
+`instabotai doctor` reports the active runtime configuration without contacting Instagram or a model server and without printing secrets.
+
+![InstabotAI packaged runtime diagnostics](docs/screenshots/runtime-doctor.svg)
+
+### Exact-head engineering gate
+
+The current revival is gated by the same package, strict typing, test, and container path consumers receive.
+
+![InstabotAI exact-head quality gate](docs/screenshots/quality-gate.svg)
+
+See [docs/PRODUCT_SURFACES.md](docs/PRODUCT_SURFACES.md) for the screenshot provenance, operator-surface matrix, and the rule that documentation must not depict product UI that is not actually implemented.
 
 ## Architecture
 
@@ -90,7 +108,7 @@ Real observed outcomes are stored separately in `ExperienceStore` and influence 
 
 An AI-selected Instagram candidate is converted to a `PlannedAction` with `ApprovalState.PENDING`. The model cannot approve its own write, disable daily limits, bypass idempotency, or call around `AutomationService`.
 
-See `docs/INTELLIGENCE_ARCHITECTURE.md` for the full contract and authority model.
+See [docs/INTELLIGENCE_ARCHITECTURE.md](docs/INTELLIGENCE_ARCHITECTURE.md) for the full contract and authority model.
 
 ### Instagram providers
 
@@ -98,7 +116,7 @@ InstabotAI has one provider contract and two backends.
 
 **Official provider** is the default and uses Instagram API with Instagram Login on `graph.instagram.com`. Use it for supported professional-account operations when you have Meta application credentials.
 
-**Private provider** is optional and uses the maintained `instagrapi` client. It is intended as a quick-start and authorized-account compatibility path when a user does not yet have an official Meta app. It reuses a persistent session and may require the user to complete Instagram verification normally. InstabotAI does not contain a checkpoint-bypass or anti-abuse evasion engine.
+**Private provider** is optional and uses the maintained `instagrapi` client. It is intended as a quick-start and authorized-account compatibility path when a user does not yet have an official Meta app. It reuses persistent session state and may require the user to complete Instagram verification normally. InstabotAI does not contain a checkpoint-bypass or anti-abuse evasion engine.
 
 Both providers are behind the same `AutomationService`, policy checks, idempotency ledger, and audit trail. Selecting the private provider does not bypass application limits or approvals.
 

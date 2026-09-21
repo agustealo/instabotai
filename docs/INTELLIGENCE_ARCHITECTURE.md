@@ -18,6 +18,24 @@ The system is designed around nine requirements:
 8. **Prompt-injection containment.** Context, evidence, and candidate payloads are explicitly treated as untrusted data rather than instructions. Model output still passes typed validation, action-vocabulary containment, critique, and deterministic scoring.
 9. **Policy sovereignty.** The AI cannot disable approval requirements, daily limits, idempotency, provider capability checks, security controls, or the canonical `AutomationService` write path.
 
+## Verified runtime evidence
+
+Documentation screenshots are restricted to real, currently implemented surfaces. The repository does not show speculative consumer dashboards while the consumer UI is still under development.
+
+### Packaged runtime diagnostics
+
+This is the actual `instabotai doctor` output captured from exact-head GitHub Actions run #104.
+
+![InstabotAI runtime diagnostics](screenshots/runtime-doctor.svg)
+
+### Exact-head quality gate
+
+This is the successful release-evidence path for the same exact head.
+
+![InstabotAI exact-head quality gate](screenshots/quality-gate.svg)
+
+The screenshot provenance and operator-surface matrix are maintained in [PRODUCT_SURFACES.md](PRODUCT_SURFACES.md).
+
 ## Runtime flow
 
 ```text
