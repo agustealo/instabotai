@@ -1,6 +1,11 @@
 import ipaddress
 
-from instabotai.research import AdaptiveResearchService, Crawl4AIFetcher, FetchedPage, ResearchAccessPolicy
+from instabotai.research import (
+    AdaptiveResearchService,
+    Crawl4AIFetcher,
+    FetchedPage,
+    ResearchAccessPolicy,
+)
 from instabotai.settings import Settings
 
 
