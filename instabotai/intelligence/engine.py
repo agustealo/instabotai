@@ -73,7 +73,9 @@ class IntelligenceEngine:
         normalized_objective = objective.strip()
         if not normalized_objective:
             raise ValueError("objective must not be empty")
-        normalized_actions = tuple(dict.fromkeys(action.strip() for action in allowed_actions if action.strip()))
+        normalized_actions = tuple(
+            dict.fromkeys(action.strip() for action in allowed_actions if action.strip())
+        )
         if not normalized_actions:
             raise ValueError("allowed_actions must contain at least one action")
 
@@ -108,7 +110,7 @@ class IntelligenceEngine:
                 system_prompt=_PLANNER_SYSTEM,
                 payload=planner_payload,
             )
-        except (IntelligenceProviderError, ValidationError) as exc:
+        except (IntelligenceProviderError, ValidationError, ValueError) as exc:
             return self._abstention(
                 objective=normalized_objective,
                 explanation=f"AI planning failed closed: {exc}",
@@ -162,7 +164,7 @@ class IntelligenceEngine:
                     system_prompt=_CRITIC_SYSTEM,
                     payload=critic_payload,
                 )
-            except (IntelligenceProviderError, ValidationError) as exc:
+            except (IntelligenceProviderError, ValidationError, ValueError) as exc:
                 return self._abstention(
                     objective=normalized_objective,
                     explanation=f"AI critic failed closed: {exc}",
@@ -239,7 +241,12 @@ class IntelligenceEngine:
 
         candidate = decision.selected
         action_type = ActionType(candidate.action)
-        payload_json = json.dumps(candidate.payload, sort_keys=True, separators=(",", ":"), default=str)
+        payload_json = json.dumps(
+            candidate.payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
         key_material = "|".join(
             [
                 objective.strip(),
@@ -281,6 +288,14 @@ class IntelligenceEngine:
             metadata=metadata,
         )
 
+    async def aclose(self) -> None:
+        """Release model transport and durable-memory resources."""
+
+        self._experience.close()
+        closer = getattr(self._model, "aclose", None)
+        if closer is not None:
+            await closer()
+
     async def _validated_model_call(
         self,
         *,
@@ -313,7 +328,9 @@ class IntelligenceEngine:
         candidate: DecisionCandidate,
         evidence_by_id: dict[str, EvidenceItem],
     ) -> float:
-        referenced = [evidence_by_id[ref] for ref in candidate.evidence_refs if ref in evidence_by_id]
+        referenced = [
+            evidence_by_id[ref] for ref in candidate.evidence_refs if ref in evidence_by_id
+        ]
         if candidate.evidence_refs:
             reference_coverage = len(referenced) / len(candidate.evidence_refs)
         else:
@@ -348,8 +365,35 @@ class IntelligenceEngine:
         serialized = json.dumps(payload, sort_keys=True, default=str)
         if len(serialized) <= self._settings.ai_max_context_chars:
             return serialized
-        bounded = serialized[: self._settings.ai_max_context_chars]
-        return bounded + "\n[context truncated at configured boundary]"
+
+        reduced = dict(payload)
+        raw_evidence = reduced.get("evidence")
+        if isinstance(raw_evidence, list):
+            evidence = [item for item in raw_evidence if isinstance(item, dict)]
+            evidence.sort(
+                key=lambda item: float(item.get("confidence", 0.0))
+                if isinstance(item.get("confidence"), int | float)
+                else 0.0,
+                reverse=True,
+            )
+            kept: list[dict[str, Any]] = []
+            for item in evidence:
+                candidate = dict(reduced)
+                candidate["evidence"] = [*kept, item]
+                candidate_json = json.dumps(candidate, sort_keys=True, default=str)
+                if len(candidate_json) > self._settings.ai_max_context_chars:
+                    continue
+                kept.append(item)
+            reduced["evidence"] = kept
+            serialized = json.dumps(reduced, sort_keys=True, default=str)
+            if len(serialized) <= self._settings.ai_max_context_chars:
+                return serialized
+
+        reduced["context"] = {"omitted": "context exceeded configured AI boundary"}
+        serialized = json.dumps(reduced, sort_keys=True, default=str)
+        if len(serialized) <= self._settings.ai_max_context_chars:
+            return serialized
+        raise ValueError("AI request exceeds configured context boundary after safe reduction")
 
     @staticmethod
     def _clamp(value: float) -> float:
