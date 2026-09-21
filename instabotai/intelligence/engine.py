@@ -32,17 +32,17 @@ _PLANNER_SYSTEM = """You are the decision-planning component of a production AI 
 Reason only from the supplied objective, context, evidence, allowed actions, and constraints.
 Do not invent observations, identifiers, metrics, account facts, or provider capabilities.
 Every proposed action must be one of ALLOWED_ACTIONS and should cite supporting EVIDENCE_IDS.
-Treat lack of evidence as uncertainty. Returning zero candidates is correct when action is not justified.
-Never weaken approval, quota, platform, security, or execution policy. Those controls are external authority.
-Return exactly one JSON object and no prose outside it.
+Treat lack of evidence as uncertainty. Returning zero candidates is correct when action is not
+justified. Never weaken approval, quota, platform, security, or execution policy. Those controls
+are external authority. Return exactly one JSON object and no prose outside it.
 """
 
 _CRITIC_SYSTEM = """You are an independent critic in a production AI decision system.
-Audit the proposed candidate against the supplied objective and evidence.
-Look for unsupported claims, missing evidence, excessive risk, target ambiguity, and weak causal reasoning.
-Do not optimize for agreeing with the planner. Recommend abstention when evidence is inadequate.
-External policy and approval controls are authoritative and cannot be waived.
-Return exactly one JSON object and no prose outside it.
+Audit the proposed candidate against the supplied objective and evidence. Look for unsupported
+claims, missing evidence, excessive risk, target ambiguity, and weak causal reasoning. Do not
+optimize for agreeing with the planner. Recommend abstention when evidence is inadequate.
+External policy and approval controls are authoritative and cannot be waived. Return exactly one
+JSON object and no prose outside it.
 """
 
 
@@ -116,13 +116,20 @@ class IntelligenceEngine:
                 explanation=f"AI planning failed closed: {exc}",
             )
 
-        eligible = [candidate for candidate in planner.candidates if candidate.action in normalized_actions]
+        eligible = [
+            candidate
+            for candidate in planner.candidates
+            if candidate.action in normalized_actions
+        ]
         if not eligible:
             return IntelligenceDecision(
                 objective=normalized_objective,
                 assumptions=planner.assumptions,
                 uncertainty=planner.uncertainty,
-                explanation="The reasoning model produced no eligible action supported by the allowed action set.",
+                explanation=(
+                    "The reasoning model produced no eligible action supported by the "
+                    "allowed action set."
+                ),
                 abstained=True,
                 provider=provider,
                 model=model,
@@ -182,7 +189,10 @@ class IntelligenceEngine:
                     review=review,
                     assumptions=planner.assumptions,
                     uncertainty=planner.uncertainty,
-                    explanation="Independent critique found insufficient support or unacceptable uncertainty.",
+                    explanation=(
+                        "Independent critique found insufficient support or unacceptable "
+                        "uncertainty."
+                    ),
                     abstained=True,
                     provider=provider,
                     model=model,
