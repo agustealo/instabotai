@@ -81,7 +81,8 @@ jobs:
           branch = os.environ["CAPTURE_BRANCH"]
           sha = os.environ["CAPTURE_SHA"]
           run_id = os.environ["CAPTURE_RUN_ID"]
-          content = f"""# Capture Provenance
+
+          provenance = f"""# Capture Provenance
 
           ## Consumer console overview
 
@@ -95,9 +96,27 @@ jobs:
           This file is rewritten by the Docs Visual Capture workflow whenever the screenshot is intentionally recaptured.
           """
           Path("docs/screenshots/CAPTURE_PROVENANCE.md").write_text(
-              "\n".join(line.strip() for line in content.splitlines()).strip() + "\n",
+              "\n".join(line.strip() for line in provenance.splitlines()).strip() + "\n",
               encoding="utf-8",
           )
+
+          inventory_path = Path("docs/PRODUCT_SURFACES.md")
+          inventory = inventory_path.read_text(encoding="utf-8")
+          row_prefix = "| `screenshots/consumer-console-overview.png` |"
+          replacement = (
+              "| `screenshots/consumer-console-overview.png` | Real product screenshot | "
+              "Current packaged Overview/readiness surface | "
+              f"Docs Visual Capture run `{run_id}`; source head `{sha}`; "
+              "canonical details in `screenshots/CAPTURE_PROVENANCE.md` |"
+          )
+          lines = inventory.splitlines()
+          matches = [index for index, line in enumerate(lines) if line.startswith(row_prefix)]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected one consumer-console inventory row, found {len(matches)}"
+              )
+          lines[matches[0]] = replacement
+          inventory_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
 
       - name: Commit current product capture and provenance
@@ -106,7 +125,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             docs/screenshots/consumer-console-overview.png \
-            docs/screenshots/CAPTURE_PROVENANCE.md
+            docs/screenshots/CAPTURE_PROVENANCE.md \
+            docs/PRODUCT_SURFACES.md
           if git diff --cached --quiet; then
             exit 0
           fi
