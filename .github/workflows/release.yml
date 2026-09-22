@@ -10,6 +10,7 @@ on:
       - "scripts/release_contract.py"
       - "tests/test_release_contract.py"
       - "tests/test_supply_chain_contract.py"
+      - "tests/test_review_regressions.py"
       - "pyproject.toml"
       - "MANIFEST.in"
       - "LICENSE"
@@ -25,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release:
+  proof:
     name: release-artifacts
     runs-on: ubuntu-24.04
     permissions:
@@ -71,7 +72,7 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/* ]]; then
             expected_tag="v${version}"
             if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
               echo "Tag $GITHUB_REF_NAME does not match package version $version; expected $expected_tag" >&2
@@ -82,9 +83,6 @@ jobs:
               echo "Release tag must point to a commit contained in master." >&2
               exit 1
             fi
-          fi
-
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/* ]]; then
             if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "Release $GITHUB_REF_NAME already exists; release tags are immutable." >&2
               exit 1
@@ -105,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           tag_args=()
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/* ]]; then
             tag_args=(--tag "$GITHUB_REF_NAME")
           fi
           python scripts/release_contract.py \
@@ -149,6 +147,15 @@ jobs:
           test "$runtime_uid" != "0"
           docker run --rm "$image" doctor > dist/release-container-doctor.json
 
+      - name: Save proven container image
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ steps.identity.outputs.version }}'
+          docker save "instabotai-release:${version}" | gzip -9 > /tmp/instabotai-release-image.tar.gz
+          test -s /tmp/instabotai-release-image.tar.gz
+
       - name: Upload release proof artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -157,10 +164,19 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload proven container image
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: instabotai-${{ steps.identity.outputs.version }}-container-image
+          path: /tmp/instabotai-release-image.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     name: publish-release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: release
+    needs: proof
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -176,24 +192,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download validated release proof
+      - name: Download proven release artifacts
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          rm -rf dist
           mkdir -p dist
           gh run download "$GITHUB_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name "instabotai-${{ needs.release.outputs.version }}-release-proof" \
+            --name "instabotai-${{ needs.proof.outputs.version }}-release-proof" \
             --dir dist
           test -s dist/release-contract.json
           test -s dist/SHA256SUMS
-          (
-            cd dist
-            sha256sum --check SHA256SUMS
-          )
+
+      - name: Load exact proven release container
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/release-image
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "instabotai-${{ needs.proof.outputs.version }}-container-image" \
+            --dir /tmp/release-image
+          image_archive=$(find /tmp/release-image -name 'instabotai-release-image.tar.gz' -print -quit)
+          test -n "$image_archive"
+          gzip -dc "$image_archive" | docker load
+          docker image inspect "instabotai-release:${{ needs.proof.outputs.version }}" >/dev/null
 
       - name: Publish immutable GHCR release image
         shell: bash
@@ -201,22 +228,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          version='${{ needs.release.outputs.version }}'
-          image="instabotai-release:${version}"
-          docker build \
-            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
-            --label "org.opencontainers.image.version=${version}" \
-            --tag "$image" \
-            .
-          runtime_uid=$(docker run --rm --entrypoint id "$image" -u)
-          test "$runtime_uid" != "0"
+          version='${{ needs.proof.outputs.version }}'
           repository=$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
           registry_image="ghcr.io/${repository}"
           version_image="${registry_image}:${version}"
           sha_image="${registry_image}:sha-${GITHUB_SHA}"
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag "$image" "$version_image"
-          docker tag "$image" "$sha_image"
+          docker tag "instabotai-release:${version}" "$version_image"
+          docker tag "instabotai-release:${version}" "$sha_image"
           docker push "$version_image"
           docker push "$sha_image"
           repo_digest=$(docker image inspect "$version_image" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
@@ -235,10 +254,10 @@ jobs:
             release create "$GITHUB_REF_NAME"
             --repo "$GITHUB_REPOSITORY"
             --verify-tag
-            --title "InstabotAI ${{ needs.release.outputs.version }}"
+            --title "InstabotAI ${{ needs.proof.outputs.version }}"
             --generate-notes
           )
-          if [[ '${{ needs.release.outputs.prerelease }}' == 'true' ]]; then
+          if [[ '${{ needs.proof.outputs.prerelease }}' == 'true' ]]; then
             args+=(--prerelease)
           fi
           for artifact in dist/*; do

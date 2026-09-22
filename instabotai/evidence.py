@@ -20,14 +20,14 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from instabotai import __version__
 from instabotai.campaigns import CampaignStore
 from instabotai.intelligence import DecisionJournal
-from instabotai.readiness import ConsumerTrialReadiness, ConsumerTrialReadinessService
+from instabotai.readiness import ConsumerTrialReadinessService
 from instabotai.settings import Settings
 from instabotai.state import ActionLedger
 from instabotai.storage import inspect_state_database
 
-EVIDENCE_FORMAT_VERSION = 1
+EVIDENCE_FORMAT_VERSION: Literal[2] = 2
 _REDACTED = "[redacted]"
-_SENSITIVE_KEY_SUFFIXES = {
+_SENSITIVE_KEY_MARKERS = (
     "accesstoken",
     "refreshtoken",
     "token",
@@ -39,29 +39,52 @@ _SENSITIVE_KEY_SUFFIXES = {
     "authorization",
     "cookie",
     "session",
-    "sessionid",
     "credential",
-    "credentials",
     "challengecode",
     "replacementpassword",
     "proxyurl",
-    "phone",
     "phonenumber",
-}
+    "phone",
+)
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-
-
-class _StrictEvidenceModel(BaseModel):
-    """Base model that rejects evidence fields the verifier does not understand."""
-
-    model_config = ConfigDict(extra="forbid")
 
 
 class TrialEvidenceError(RuntimeError):
     """Raised when a requested consumer-trial evidence bundle cannot be assembled."""
 
 
-class TrialEvidenceRuntime(_StrictEvidenceModel):
+class StrictEvidenceModel(BaseModel):
+    """Evidence models reject fields that are not part of the accepted document."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TrialEvidenceReadinessCheck(StrictEvidenceModel):
+    """Strict copy of one readiness check embedded in exported evidence."""
+
+    key: str = Field(min_length=1, max_length=120)
+    label: str = Field(min_length=1, max_length=160)
+    status: Literal["pass", "warn", "fail", "skip"]
+    required: bool = True
+    detail: str = Field(min_length=1, max_length=2_000)
+    remediation: str | None = Field(default=None, max_length=2_000)
+
+
+class TrialEvidenceReadiness(StrictEvidenceModel):
+    """Strict readiness projection embedded in evidence bundles."""
+
+    version: str
+    environment: str
+    generated_at: datetime
+    live_probes: bool
+    research_required: bool
+    ready: bool
+    checks: tuple[TrialEvidenceReadinessCheck, ...]
+    blockers: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+class TrialEvidenceRuntime(StrictEvidenceModel):
     """Secret-free runtime identity and policy configuration recorded with a bundle."""
 
     app_version: str
@@ -81,7 +104,7 @@ class TrialEvidenceRuntime(_StrictEvidenceModel):
     daily_comment_moderation_limit: int
 
 
-class EvidenceIntegrity(_StrictEvidenceModel):
+class EvidenceIntegrity(StrictEvidenceModel):
     """Content digest for detecting changes to an exported bundle."""
 
     algorithm: Literal["sha256"] = "sha256"
@@ -89,15 +112,15 @@ class EvidenceIntegrity(_StrictEvidenceModel):
     signed: Literal[False] = False
 
 
-class TrialEvidenceBundle(_StrictEvidenceModel):
+class TrialEvidenceBundle(StrictEvidenceModel):
     """One reviewable evidence snapshot for a durable campaign job."""
 
-    format_version: int = EVIDENCE_FORMAT_VERSION
+    format_version: Literal[1, 2] = EVIDENCE_FORMAT_VERSION
     bundle_id: str = Field(default_factory=lambda: uuid4().hex, min_length=16, max_length=64)
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     job_id: str
     runtime: TrialEvidenceRuntime
-    readiness: ConsumerTrialReadiness
+    readiness: TrialEvidenceReadiness
     campaign: dict[str, Any]
     job: dict[str, Any]
     decision: dict[str, Any]
@@ -106,7 +129,7 @@ class TrialEvidenceBundle(_StrictEvidenceModel):
     integrity: EvidenceIntegrity
 
 
-class EvidenceVerification(_StrictEvidenceModel):
+class EvidenceVerification(StrictEvidenceModel):
     """Result of validating a bundle's content digest."""
 
     valid: bool
@@ -141,14 +164,15 @@ class TrialEvidenceService:
             )
 
         with _state_snapshot(self.settings.state_db_path) as snapshot_path:
-            snapshot_database = str(snapshot_path)
-            schema = inspect_state_database(snapshot_database)
+            schema = inspect_state_database(snapshot_path)
             if not schema.ready:
-                raise TrialEvidenceError("could not create a healthy evidence snapshot")
+                raise TrialEvidenceError(
+                    "durable state snapshot failed schema/integrity validation"
+                )
 
-            store = CampaignStore(snapshot_database)
-            journal = DecisionJournal(snapshot_database)
-            ledger = ActionLedger(snapshot_database)
+            store = CampaignStore(snapshot_path)
+            journal = DecisionJournal(snapshot_path)
+            ledger = ActionLedger(snapshot_path)
             try:
                 try:
                     job = store.get_job(job_id)
@@ -168,9 +192,12 @@ class TrialEvidenceService:
                 journal.close()
                 store.close()
 
-        readiness = await ConsumerTrialReadinessService(self.settings).evaluate(
+        readiness_report = await ConsumerTrialReadinessService(self.settings).evaluate(
             live=live,
             require_research=require_research,
+        )
+        readiness = TrialEvidenceReadiness.model_validate(
+            readiness_report.model_dump(mode="json")
         )
         runtime = TrialEvidenceRuntime(
             app_version=__version__,
@@ -260,22 +287,24 @@ def package_fingerprint() -> str:
 
 
 def verify_evidence_bundle(bundle: TrialEvidenceBundle) -> EvidenceVerification:
-    """Recompute a bundle digest; this detects changes but is not a signature."""
+    """Recompute the digest according to the bundle's declared format version."""
 
     payload = bundle.model_dump(mode="json")
-    payload["integrity"] = {
-        "algorithm": bundle.integrity.algorithm,
-        "signed": bundle.integrity.signed,
-    }
+    integrity = dict(payload["integrity"])
+    expected = str(integrity.pop("digest"))
+    if bundle.format_version == 1:
+        payload.pop("integrity")
+    else:
+        payload["integrity"] = integrity
     actual = _content_digest(payload)
     return EvidenceVerification(
         valid=(
             bundle.integrity.algorithm == "sha256"
             and bundle.integrity.signed is False
-            and actual == bundle.integrity.digest
+            and actual == expected
         ),
         algorithm=bundle.integrity.algorithm,
-        expected_digest=bundle.integrity.digest,
+        expected_digest=expected,
         actual_digest=actual,
         bundle_id=bundle.bundle_id,
         job_id=bundle.job_id,
@@ -283,21 +312,12 @@ def verify_evidence_bundle(bundle: TrialEvidenceBundle) -> EvidenceVerification:
 
 
 def load_evidence_bundle(path: Path) -> TrialEvidenceBundle:
-    """Load a typed evidence document without silently discarding unknown content."""
+    """Load and strictly validate the typed structure of an evidence JSON file."""
 
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        bundle = TrialEvidenceBundle.model_validate(raw)
+        return TrialEvidenceBundle.model_validate_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise TrialEvidenceError(f"could not load trial evidence from {path}: {exc}") from exc
-
-    canonical = bundle.model_dump(mode="json")
-    if raw != canonical:
-        raise TrialEvidenceError(
-            f"could not load trial evidence from {path}: document contains unknown or "
-            "non-canonical fields"
-        )
-    return bundle
 
 
 def write_evidence_bundle(bundle: TrialEvidenceBundle, path: Path) -> Path:
@@ -330,6 +350,41 @@ def write_evidence_bundle(bundle: TrialEvidenceBundle, path: Path) -> Path:
     return destination
 
 
+@contextmanager
+def _state_snapshot(database_path: str) -> Iterator[str]:
+    """Create one SQLite backup snapshot for all durable evidence projections."""
+
+    if database_path == ":memory:":
+        raise TrialEvidenceError("consumer-trial evidence requires filesystem-backed durable state")
+
+    source_path = Path(database_path).expanduser().resolve()
+    if not source_path.is_file():
+        raise TrialEvidenceError(f"durable state database does not exist: {source_path}")
+
+    with tempfile.TemporaryDirectory(prefix="instabotai-evidence-") as directory:
+        snapshot_path = Path(directory) / "state.sqlite3"
+        source: sqlite3.Connection | None = None
+        destination: sqlite3.Connection | None = None
+        try:
+            source = sqlite3.connect(str(source_path), timeout=5.0)
+            destination = sqlite3.connect(str(snapshot_path), timeout=5.0)
+            source.backup(destination)
+            destination.commit()
+        except (OSError, sqlite3.Error) as exc:
+            raise TrialEvidenceError(
+                f"could not create a consistent durable-state snapshot ({type(exc).__name__})"
+            ) from exc
+        finally:
+            if destination is not None:
+                destination.close()
+            if source is not None:
+                source.close()
+
+        with suppress(OSError):
+            snapshot_path.chmod(0o600)
+        yield str(snapshot_path)
+
+
 def _configured_secret_values(settings: Settings) -> tuple[str, ...]:
     values: list[str] = []
     for value in (
@@ -349,33 +404,10 @@ def _configured_secret_values(settings: Settings) -> tuple[str, ...]:
 
 
 def _is_sensitive_key(key: str) -> bool:
-    """Recognize common snake_case, kebab-case, and camelCase credential keys."""
+    """Match credential-like keys across snake, kebab, camel, and Pascal casing."""
 
-    compact = re.sub(r"[^a-z0-9]", "", key.casefold())
-    return any(compact == suffix or compact.endswith(suffix) for suffix in _SENSITIVE_KEY_SUFFIXES)
-
-
-@contextmanager
-def _state_snapshot(database_path: str | Path) -> Iterator[Path]:
-    """Expose one consistent, read-only point-in-time copy of durable SQLite state."""
-
-    raw_path = str(database_path)
-    if raw_path == ":memory:":
-        raise TrialEvidenceError("consumer-trial evidence requires durable SQLite state")
-
-    source_path = Path(raw_path).expanduser().resolve()
-    with tempfile.TemporaryDirectory(prefix="instabotai-evidence-") as directory:
-        snapshot_path = Path(directory) / "state.sqlite3"
-        source = sqlite3.connect(str(source_path), timeout=30.0)
-        destination = sqlite3.connect(str(snapshot_path), timeout=30.0)
-        try:
-            source.backup(destination)
-        except sqlite3.Error as exc:
-            raise TrialEvidenceError(f"could not snapshot durable trial state: {exc}") from exc
-        finally:
-            destination.close()
-            source.close()
-        yield snapshot_path
+    normalized = re.sub(r"[^a-z0-9]+", "", key.casefold())
+    return any(marker in normalized for marker in _SENSITIVE_KEY_MARKERS)
 
 
 def _content_digest(value: Any) -> str:
