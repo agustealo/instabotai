@@ -68,11 +68,45 @@ jobs:
             http://127.0.0.1:8765/
           test -s docs/screenshots/consumer-console-overview.png
 
-      - name: Commit current product capture
+      - name: Record capture provenance
+        env:
+          CAPTURE_BRANCH: ${{ github.ref_name }}
+          CAPTURE_SHA: ${{ github.sha }}
+          CAPTURE_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          branch = os.environ["CAPTURE_BRANCH"]
+          sha = os.environ["CAPTURE_SHA"]
+          run_id = os.environ["CAPTURE_RUN_ID"]
+          content = f"""# Capture Provenance
+
+          ## Consumer console overview
+
+          - Asset: `consumer-console-overview.png`
+          - Source branch at capture: `{branch}`
+          - Source commit captured: `{sha}`
+          - Workflow run: Docs Visual Capture (`{run_id}`)
+          - Method: install package, launch the real local FastAPI console, wait for `/healthz`, capture `http://127.0.0.1:8765/` with headless Chrome.
+          - Configuration: secret-free CI-only provider placeholders; no authenticated Instagram or AI success is claimed by this image.
+
+          This file is rewritten by the Docs Visual Capture workflow whenever the screenshot is intentionally recaptured.
+          """
+          Path("docs/screenshots/CAPTURE_PROVENANCE.md").write_text(
+              "\n".join(line.strip() for line in content.splitlines()).strip() + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Commit current product capture and provenance
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots/consumer-console-overview.png
+          git add \
+            docs/screenshots/consumer-console-overview.png \
+            docs/screenshots/CAPTURE_PROVENANCE.md
           if git diff --cached --quiet; then
             exit 0
           fi
