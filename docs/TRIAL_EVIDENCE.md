@@ -17,7 +17,11 @@ A bundle ties one durable job to the surrounding consumer-trial state at export 
 - the exact journaled AI decision referenced by the job;
 - the action-ledger row for the job idempotency key when present;
 - current daily usage counters;
-- a SHA-256 content digest covering the exported evidence payload.
+- a SHA-256 content digest whose covered fields are defined by the bundle format version.
+
+New exports use evidence format **2**, which covers the complete accepted evidence document including integrity metadata other than the digest itself. Archived format-1 bundles remain verifiable using the original format-1 digest contract, which excluded the integrity object. The verifier dispatches by the declared format version rather than silently reinterpreting old evidence under new rules.
+
+The related durable campaign, job, decision, action-ledger, and usage projections are all read from one SQLite backup snapshot. That snapshot is created with SQLite's backup API before the evidence read begins, so those records represent one consistent database point in time rather than a mixture of separate live reads.
 
 The package fingerprint identifies the installed code payload even when a wheel or container has no Git metadata. It is not a release signature.
 
@@ -51,7 +55,9 @@ Evidence export does not treat a readiness failure as permission to execute or a
 instabotai trial-evidence-verify ./trial-evidence.json
 ```
 
-Verification recomputes the canonical SHA-256 digest. Exit code `0` means the content digest matches. Exit code `2` means the typed file loaded successfully but its content no longer matches the recorded digest.
+Verification first performs strict typed loading. Unknown fields in the evidence envelope, runtime projection, readiness projection, readiness checks, or integrity metadata are rejected rather than silently discarded. The integrity contract currently accepts only `algorithm="sha256"` and `signed=false`, and only supported evidence format versions are accepted.
+
+After strict loading, verification recomputes the canonical SHA-256 digest according to the declared format version. Format 1 retains its historical digest calculation for archived bundles. Format 2 binds the accepted integrity metadata into the digest. Exit code `0` means the accepted document matches its recorded digest. Exit code `2` means the typed file loaded successfully but its content no longer matches the recorded digest.
 
 The digest is **tamper-evident, not signed**. SHA-256 detects content changes after export, but it does not prove which person or machine created the file. InstabotAI must not describe this field as a signature or authenticated provenance unless a real signing identity is added later.
 
@@ -85,7 +91,7 @@ The sanitizer removes or replaces:
 - private-provider passwords;
 - configured proxy credentials;
 - challenge and replacement-password values;
-- values beneath sensitive keys such as `token`, `access_token`, `password`, `secret`, `api_key`, `authorization`, `cookie`, `session`, and credential-related fields;
+- values beneath credential-like keys after normalizing snake_case, kebab-case, camelCase, and PascalCase naming, including forms such as `token`, `access_token`, `accessToken`, `refreshToken`, `password`, `secret`, `api_key`, `apiKey`, `clientSecret`, `authorization`, `cookie`, `session`, and credential-related fields;
 - bearer credentials embedded inside otherwise ordinary strings.
 
 CLI file export is atomic. On platforms that support POSIX permissions, InstabotAI makes the temporary and final evidence files private with mode `0600` on a best-effort basis.
@@ -99,9 +105,10 @@ The evidence path is deliberately downstream of product authority:
 ```text
 StateSchema
   + ConsumerTrialReadinessService
-  + CampaignStore
-  + DecisionJournal
-  + ActionLedger
+  + one SQLite backup snapshot
+      + CampaignStore
+      + DecisionJournal
+      + ActionLedger
           |
           v
   TrialEvidenceService
@@ -109,6 +116,8 @@ StateSchema
           +--> typed JSON bundle
           +--> SHA-256 content digest
 ```
+
+The snapshot does not create a second persistence authority. Existing canonical stores still interpret the state; the backup simply gives all evidence reads one stable database image.
 
 There is no path from `TrialEvidenceService` back into approval, `AutomationPolicy`, quota reservation, provider execution, retry ownership, or business-outcome recording.
 
@@ -123,6 +132,8 @@ A bundle should be read as an observation of durable state at one moment. In par
 - `readiness.ready=true` means the selected readiness profile has no required blockers, not that arbitrary writes are authorized;
 - an absent action-ledger row can be legitimate for a job that has not entered the canonical write path yet;
 - package fingerprint equality means the packaged InstabotAI file payloads hash identically, not that the surrounding OS or provider environment is identical.
+
+The durable database projections come from one SQLite snapshot. Live readiness probes, when explicitly requested, are external observations performed after that durable snapshot and are labeled as such in the readiness report.
 
 ## Trial review sequence
 
@@ -146,7 +157,10 @@ If the bundle exposes a disagreement between readiness, job state, provider resu
 Repository CI must prove more than module importability. The release gate is expected to keep evidence covered by:
 
 - typed unit and integration regressions;
-- deliberate nested-secret contamination tests;
+- deliberate nested-secret contamination tests, including camelCase credential keys;
+- strict-document and integrity-metadata tampering tests;
+- archived format-1 verification compatibility and format-2 integrity binding;
+- one-snapshot durable-read concurrency regression proof;
 - digest-tampering tests;
 - atomic export/load/verify tests;
 - read-only HTTP boundary tests with `Cache-Control: no-store`;

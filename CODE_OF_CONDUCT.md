@@ -23,13 +23,13 @@ include:
 Examples of unacceptable behavior by participants include:
 
 * The use of sexualized language or imagery and unwelcome sexual attention or
- advances
+  advances
 * Trolling, insulting/derogatory comments, and personal or political attacks
 * Public or private harassment
 * Publishing others' private information, such as a physical or electronic
- address, without explicit permission
+  address, without explicit permission
 * Other conduct which could reasonably be considered inappropriate in a
- professional setting
+  professional setting
 
 ## Our Responsibilities
 
@@ -45,30 +45,28 @@ threatening, offensive, or harmful.
 
 ## Scope
 
-This Code of Conduct applies to project spaces that InstabotAI maintainers can
-actually administer and enforce. At present that means this GitHub repository
-and its issues, pull requests, reviews, and other GitHub-hosted project
-interactions. A future official project channel or event is in scope only when
-it explicitly adopts this Code of Conduct and publishes a private reporting
-method for that space.
+This Code of Conduct applies to the InstabotAI GitHub repository and other
+GitHub-hosted project spaces controlled by the InstabotAI maintainers.
 
-This project does not claim an enforcement channel for unrelated public or
-offline spaces that it does not administer. Platform or venue rules continue
-to apply independently in those spaces.
+The project does not currently claim an enforceable Code of Conduct scope for
+off-GitHub events, social accounts, chat systems, or other third-party spaces.
+If InstabotAI later designates an off-GitHub space as official, that designation
+must also publish a stable project-owned private reporting channel before the
+space is treated as in scope.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior in an
-in-scope project space should be reported privately to the InstabotAI
-maintainers using a contact method published on the repository owner's GitHub
-profile. Do not include sensitive personal information, private correspondence,
-credentials, or other confidential evidence in public issues, pull requests,
-or discussions.
+Instances of abusive, harassing, or otherwise unacceptable behavior should be
+reported privately to the InstabotAI maintainers using a contact method published
+on the repository owner's GitHub profile when one is available. Do not include
+sensitive personal information, private correspondence, credentials, or other
+confidential evidence in public issues, pull requests, or discussions.
 
-For conduct on GitHub, GitHub's platform reporting mechanisms may also be used
-when a private maintainer contact is unavailable. Maintainers will review
-reports in good faith, protect reporter confidentiality to the extent reasonably
-possible, and take action appropriate to the circumstances.
+If no private maintainer contact is available, GitHub's platform reporting
+mechanisms are the fallback for the GitHub-hosted project spaces currently in
+scope. Maintainers will review reports in good faith, protect reporter
+confidentiality to the extent reasonably possible, and take action appropriate
+to the circumstances.
 
 Project maintainers who do not follow or enforce this Code of Conduct in good
 faith may face temporary or permanent repercussions as determined by other
