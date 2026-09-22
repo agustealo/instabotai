@@ -54,14 +54,18 @@ further defined and clarified by project maintainers.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project team at https://www.facebook.com/steffanmaxvip. All
-complaints will be reviewed and investigated and will result in a response that
-is deemed necessary and appropriate to the circumstances. The project team is
-obligated to maintain confidentiality with regard to the reporter of an incident.
-Further details of specific enforcement policies may be posted separately.
+Instances of abusive, harassing, or otherwise unacceptable behavior should be
+reported privately to the InstabotAI maintainers using a contact method published
+on the repository owner's GitHub profile. Do not include sensitive personal
+information, private correspondence, credentials, or other confidential evidence
+in public issues, pull requests, or discussions.
 
-Project maintainers who do not follow or enforce the Code of Conduct in good
+When conduct occurs on GitHub and a private maintainer contact is unavailable,
+GitHub's platform reporting mechanisms may also be used. Maintainers will review
+reports in good faith, protect reporter confidentiality to the extent reasonably
+possible, and take action appropriate to the circumstances.
+
+Project maintainers who do not follow or enforce this Code of Conduct in good
 faith may face temporary or permanent repercussions as determined by other
 members of the project's leadership.
 
