@@ -6,14 +6,16 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import tempfile
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from instabotai import __version__
 from instabotai.campaigns import CampaignStore
@@ -25,20 +27,41 @@ from instabotai.storage import inspect_state_database
 
 EVIDENCE_FORMAT_VERSION = 1
 _REDACTED = "[redacted]"
-_SENSITIVE_KEY = re.compile(
-    r"(?:^|[_-])(?:access[_-]?token|token|password|passwd|secret|api[_-]?key|"
-    r"authorization|cookie|session|credential|challenge[_-]?code|replacement[_-]?password|"
-    r"proxy[_-]?url|phone(?:[_-]?number)?)(?:$|[_-])",
-    re.IGNORECASE,
-)
+_SENSITIVE_KEY_SUFFIXES = {
+    "accesstoken",
+    "refreshtoken",
+    "token",
+    "password",
+    "passwd",
+    "secret",
+    "apikey",
+    "clientsecret",
+    "authorization",
+    "cookie",
+    "session",
+    "sessionid",
+    "credential",
+    "credentials",
+    "challengecode",
+    "replacementpassword",
+    "proxyurl",
+    "phone",
+    "phonenumber",
+}
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+
+
+class _StrictEvidenceModel(BaseModel):
+    """Base model that rejects evidence fields the verifier does not understand."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class TrialEvidenceError(RuntimeError):
     """Raised when a requested consumer-trial evidence bundle cannot be assembled."""
 
 
-class TrialEvidenceRuntime(BaseModel):
+class TrialEvidenceRuntime(_StrictEvidenceModel):
     """Secret-free runtime identity and policy configuration recorded with a bundle."""
 
     app_version: str
@@ -58,15 +81,15 @@ class TrialEvidenceRuntime(BaseModel):
     daily_comment_moderation_limit: int
 
 
-class EvidenceIntegrity(BaseModel):
+class EvidenceIntegrity(_StrictEvidenceModel):
     """Content digest for detecting changes to an exported bundle."""
 
-    algorithm: str = "sha256"
+    algorithm: Literal["sha256"] = "sha256"
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    signed: bool = False
+    signed: Literal[False] = False
 
 
-class TrialEvidenceBundle(BaseModel):
+class TrialEvidenceBundle(_StrictEvidenceModel):
     """One reviewable evidence snapshot for a durable campaign job."""
 
     format_version: int = EVIDENCE_FORMAT_VERSION
@@ -83,7 +106,7 @@ class TrialEvidenceBundle(BaseModel):
     integrity: EvidenceIntegrity
 
 
-class EvidenceVerification(BaseModel):
+class EvidenceVerification(_StrictEvidenceModel):
     """Result of validating a bundle's content digest."""
 
     valid: bool
@@ -110,34 +133,40 @@ class TrialEvidenceService:
     ) -> TrialEvidenceBundle:
         """Build one sanitized evidence bundle without approving or executing work."""
 
-        schema = inspect_state_database(self.settings.state_db_path)
-        if not schema.ready:
+        source_schema = inspect_state_database(self.settings.state_db_path)
+        if not source_schema.ready:
             raise TrialEvidenceError(
                 "durable state is not current and healthy; run `instabotai state-check` "
                 "and `instabotai state-upgrade` before exporting trial evidence"
             )
 
-        store = CampaignStore(self.settings.state_db_path)
-        journal = DecisionJournal(self.settings.state_db_path)
-        ledger = ActionLedger(self.settings.state_db_path)
-        try:
-            try:
-                job = store.get_job(job_id)
-                campaign = store.get_campaign(job.campaign_id)
-            except (LookupError, RuntimeError) as exc:
-                raise TrialEvidenceError(f"campaign job {job_id!r} was not found") from exc
+        with _state_snapshot(self.settings.state_db_path) as snapshot_path:
+            snapshot_database = str(snapshot_path)
+            schema = inspect_state_database(snapshot_database)
+            if not schema.ready:
+                raise TrialEvidenceError("could not create a healthy evidence snapshot")
 
-            decision = journal.get(job.decision_id)
-            if decision is None:
-                raise TrialEvidenceError(
-                    f"AI decision {job.decision_id!r} referenced by job {job_id!r} is missing"
-                )
-            action_record = ledger.get_record(job.action.idempotency_key)
-            usage = ledger.usage_snapshot()
-        finally:
-            ledger.close()
-            journal.close()
-            store.close()
+            store = CampaignStore(snapshot_database)
+            journal = DecisionJournal(snapshot_database)
+            ledger = ActionLedger(snapshot_database)
+            try:
+                try:
+                    job = store.get_job(job_id)
+                    campaign = store.get_campaign(job.campaign_id)
+                except (LookupError, RuntimeError) as exc:
+                    raise TrialEvidenceError(f"campaign job {job_id!r} was not found") from exc
+
+                decision = journal.get(job.decision_id)
+                if decision is None:
+                    raise TrialEvidenceError(
+                        f"AI decision {job.decision_id!r} referenced by job {job_id!r} is missing"
+                    )
+                action_record = ledger.get_record(job.action.idempotency_key)
+                usage = ledger.usage_snapshot()
+            finally:
+                ledger.close()
+                journal.close()
+                store.close()
 
         readiness = await ConsumerTrialReadinessService(self.settings).evaluate(
             live=live,
@@ -178,14 +207,15 @@ class TrialEvidenceService:
             ),
             "usage_snapshot": self._sanitize(usage.model_dump(mode="json")),
         }
-        digest = _content_digest(content)
+        integrity_metadata = {"algorithm": "sha256", "signed": False}
+        digest = _content_digest({**content, "integrity": integrity_metadata})
         return TrialEvidenceBundle(
             **content,
             integrity=EvidenceIntegrity(digest=digest),
         )
 
     def _sanitize(self, value: Any, *, key: str | None = None) -> Any:
-        if key is not None and _SENSITIVE_KEY.search(key):
+        if key is not None and _is_sensitive_key(key):
             return _REDACTED
         if isinstance(value, SecretStr):
             return _REDACTED
@@ -232,10 +262,18 @@ def package_fingerprint() -> str:
 def verify_evidence_bundle(bundle: TrialEvidenceBundle) -> EvidenceVerification:
     """Recompute a bundle digest; this detects changes but is not a signature."""
 
-    payload = bundle.model_dump(mode="json", exclude={"integrity"})
+    payload = bundle.model_dump(mode="json")
+    payload["integrity"] = {
+        "algorithm": bundle.integrity.algorithm,
+        "signed": bundle.integrity.signed,
+    }
     actual = _content_digest(payload)
     return EvidenceVerification(
-        valid=(bundle.integrity.algorithm == "sha256" and actual == bundle.integrity.digest),
+        valid=(
+            bundle.integrity.algorithm == "sha256"
+            and bundle.integrity.signed is False
+            and actual == bundle.integrity.digest
+        ),
         algorithm=bundle.integrity.algorithm,
         expected_digest=bundle.integrity.digest,
         actual_digest=actual,
@@ -245,12 +283,21 @@ def verify_evidence_bundle(bundle: TrialEvidenceBundle) -> EvidenceVerification:
 
 
 def load_evidence_bundle(path: Path) -> TrialEvidenceBundle:
-    """Load and validate the typed structure of an evidence JSON file."""
+    """Load a typed evidence document without silently discarding unknown content."""
 
     try:
-        return TrialEvidenceBundle.model_validate_json(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        bundle = TrialEvidenceBundle.model_validate(raw)
     except (OSError, ValueError) as exc:
         raise TrialEvidenceError(f"could not load trial evidence from {path}: {exc}") from exc
+
+    canonical = bundle.model_dump(mode="json")
+    if raw != canonical:
+        raise TrialEvidenceError(
+            f"could not load trial evidence from {path}: document contains unknown or "
+            "non-canonical fields"
+        )
+    return bundle
 
 
 def write_evidence_bundle(bundle: TrialEvidenceBundle, path: Path) -> Path:
@@ -299,6 +346,36 @@ def _configured_secret_values(settings: Settings) -> tuple[str, ...]:
         if raw:
             values.append(raw)
     return tuple(dict.fromkeys(values))
+
+
+def _is_sensitive_key(key: str) -> bool:
+    """Recognize common snake_case, kebab-case, and camelCase credential keys."""
+
+    compact = re.sub(r"[^a-z0-9]", "", key.casefold())
+    return any(compact == suffix or compact.endswith(suffix) for suffix in _SENSITIVE_KEY_SUFFIXES)
+
+
+@contextmanager
+def _state_snapshot(database_path: str | Path) -> Iterator[Path]:
+    """Expose one consistent, read-only point-in-time copy of durable SQLite state."""
+
+    raw_path = str(database_path)
+    if raw_path == ":memory:":
+        raise TrialEvidenceError("consumer-trial evidence requires durable SQLite state")
+
+    source_path = Path(raw_path).expanduser().resolve()
+    with tempfile.TemporaryDirectory(prefix="instabotai-evidence-") as directory:
+        snapshot_path = Path(directory) / "state.sqlite3"
+        source = sqlite3.connect(str(source_path), timeout=30.0)
+        destination = sqlite3.connect(str(snapshot_path), timeout=30.0)
+        try:
+            source.backup(destination)
+        except sqlite3.Error as exc:
+            raise TrialEvidenceError(f"could not snapshot durable trial state: {exc}") from exc
+        finally:
+            destination.close()
+            source.close()
+        yield snapshot_path
 
 
 def _content_digest(value: Any) -> str:
