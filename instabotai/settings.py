@@ -2,11 +2,92 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_APP_DIR_DISPLAY_NAME = "InstabotAI"
+_APP_DIR_UNIX_NAME = "instabotai"
+_CONFIG_FILE_ENV = "INSTABOTAI_CONFIG_FILE"
+
+
+def _absolute_env_dir(name: str) -> Path | None:
+    """Return an absolute directory from an environment variable when valid."""
+
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        return None
+    return path
+
+
+def runtime_data_dir() -> Path:
+    """Return the stable per-user directory used for durable runtime data."""
+
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / _APP_DIR_DISPLAY_NAME
+
+    if os.name == "nt":
+        root = _absolute_env_dir("LOCALAPPDATA") or _absolute_env_dir("APPDATA")
+        if root is None:
+            root = Path.home() / "AppData" / "Local"
+        return root / _APP_DIR_DISPLAY_NAME
+
+    root = _absolute_env_dir("XDG_DATA_HOME")
+    if root is None:
+        root = Path.home() / ".local" / "share"
+    return root / _APP_DIR_UNIX_NAME
+
+
+def runtime_config_dir() -> Path:
+    """Return the stable per-user directory used for local runtime configuration."""
+
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / _APP_DIR_DISPLAY_NAME
+
+    if os.name == "nt":
+        root = _absolute_env_dir("APPDATA") or _absolute_env_dir("LOCALAPPDATA")
+        if root is None:
+            root = Path.home() / "AppData" / "Roaming"
+        return root / _APP_DIR_DISPLAY_NAME
+
+    root = _absolute_env_dir("XDG_CONFIG_HOME")
+    if root is None:
+        root = Path.home() / ".config"
+    return root / _APP_DIR_UNIX_NAME
+
+
+def runtime_config_file() -> Path:
+    """Return the effective optional dotenv file used by ``get_settings``.
+
+    ``INSTABOTAI_CONFIG_FILE`` is an explicit operator override. Relative values for that
+    override are resolved once against the process working directory because the operator
+    deliberately supplied the path. Without the override, configuration is discovered only
+    from the stable per-user config directory and never from an arbitrary current directory.
+    """
+
+    override = (os.environ.get(_CONFIG_FILE_ENV) or "").strip()
+    if override:
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        return path.resolve(strict=False)
+    return runtime_config_dir() / ".env"
+
+
+def _default_state_db_path() -> str:
+    return str(runtime_data_dir() / "instabotai.sqlite3")
+
+
+def _default_private_session_path() -> str:
+    return str(runtime_data_dir() / "private-instagram-session.json")
 
 
 class Settings(BaseSettings):
@@ -14,14 +95,14 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="INSTABOTAI_",
-        env_file=".env",
+        env_file=None,
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
     )
 
     environment: str = "development"
-    state_db_path: str = "data/instabotai.sqlite3"
+    state_db_path: str = Field(default_factory=_default_state_db_path)
 
     ai_provider: Literal["ollama", "openai_compatible"] = "ollama"
     ai_model: str = "llama3.2:3b"
@@ -43,7 +124,7 @@ class Settings(BaseSettings):
 
     private_instagram_username: str | None = None
     private_instagram_password: SecretStr | None = None
-    private_session_path: str = "data/private-instagram-session.json"
+    private_session_path: str = Field(default_factory=_default_private_session_path)
     private_proxy_url: SecretStr | None = None
     private_image_max_bytes: int = Field(default=15_000_000, ge=100_000, le=50_000_000)
 
@@ -122,7 +203,7 @@ class Settings(BaseSettings):
                 normalized.append(domain)
         return tuple(dict.fromkeys(normalized))
 
-    @field_validator("ai_model", "ai_base_url", "ui_host")
+    @field_validator("ai_model", "ai_base_url", "ui_host", "state_db_path", "private_session_path")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
         normalized = value.strip()
@@ -135,4 +216,4 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the process-wide immutable configuration snapshot."""
 
-    return Settings()
+    return Settings(_env_file=runtime_config_file())
