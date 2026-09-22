@@ -45,23 +45,28 @@ threatening, offensive, or harmful.
 
 ## Scope
 
-This Code of Conduct applies both within project spaces and in public spaces
-when an individual is representing the project or its community. Examples of
-representing a project or community include using an official project e-mail
-address, posting via an official social media account, or acting as an appointed
-representative at an online or offline event. Representation of a project may be
-further defined and clarified by project maintainers.
+This Code of Conduct applies to project spaces that InstabotAI maintainers can
+actually administer and enforce. At present that means this GitHub repository
+and its issues, pull requests, reviews, and other GitHub-hosted project
+interactions. A future official project channel or event is in scope only when
+it explicitly adopts this Code of Conduct and publishes a private reporting
+method for that space.
+
+This project does not claim an enforcement channel for unrelated public or
+offline spaces that it does not administer. Platform or venue rules continue
+to apply independently in those spaces.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior should be
-reported privately to the InstabotAI maintainers using a contact method published
-on the repository owner's GitHub profile. Do not include sensitive personal
-information, private correspondence, credentials, or other confidential evidence
-in public issues, pull requests, or discussions.
+Instances of abusive, harassing, or otherwise unacceptable behavior in an
+in-scope project space should be reported privately to the InstabotAI
+maintainers using a contact method published on the repository owner's GitHub
+profile. Do not include sensitive personal information, private correspondence,
+credentials, or other confidential evidence in public issues, pull requests,
+or discussions.
 
-When conduct occurs on GitHub and a private maintainer contact is unavailable,
-GitHub's platform reporting mechanisms may also be used. Maintainers will review
+For conduct on GitHub, GitHub's platform reporting mechanisms may also be used
+when a private maintainer contact is unavailable. Maintainers will review
 reports in good faith, protect reporter confidentiality to the extent reasonably
 possible, and take action appropriate to the circumstances.
 
