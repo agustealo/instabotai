@@ -29,8 +29,10 @@ jobs:
     name: release-artifacts
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      packages: write
+      contents: read
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      prerelease: ${{ steps.identity.outputs.prerelease }}
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
@@ -80,6 +82,9 @@ jobs:
               echo "Release tag must point to a commit contained in master." >&2
               exit 1
             fi
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/* ]]; then
             if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
               echo "Release $GITHUB_REF_NAME already exists; release tags are immutable." >&2
               exit 1
@@ -144,29 +149,6 @@ jobs:
           test "$runtime_uid" != "0"
           docker run --rm "$image" doctor > dist/release-container-doctor.json
 
-      - name: Publish immutable GHCR release image
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          version='${{ steps.identity.outputs.version }}'
-          repository=$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
-          registry_image="ghcr.io/${repository}"
-          version_image="${registry_image}:${version}"
-          sha_image="${registry_image}:sha-${GITHUB_SHA}"
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag "instabotai-release:${version}" "$version_image"
-          docker tag "instabotai-release:${version}" "$sha_image"
-          docker push "$version_image"
-          docker push "$sha_image"
-          repo_digest=$(docker image inspect "$version_image" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-            | grep "^${registry_image}@sha256:" \
-            | head -n 1)
-          test -n "$repo_digest"
-          printf '%s\n' "$repo_digest" > dist/CONTAINER_IMAGE
-
       - name: Upload release proof artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -175,8 +157,75 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  publish:
+    name: publish-release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: release
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    steps:
+      - name: Check out exact release ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Download validated release proof
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "instabotai-${{ needs.release.outputs.version }}-release-proof" \
+            --dir dist
+          test -s dist/release-contract.json
+          test -s dist/SHA256SUMS
+          (
+            cd dist
+            sha256sum --check SHA256SUMS
+          )
+
+      - name: Publish immutable GHCR release image
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version='${{ needs.release.outputs.version }}'
+          image="instabotai-release:${version}"
+          docker build \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${version}" \
+            --tag "$image" \
+            .
+          runtime_uid=$(docker run --rm --entrypoint id "$image" -u)
+          test "$runtime_uid" != "0"
+          repository=$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          registry_image="ghcr.io/${repository}"
+          version_image="${registry_image}:${version}"
+          sha_image="${registry_image}:sha-${GITHUB_SHA}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag "$image" "$version_image"
+          docker tag "$image" "$sha_image"
+          docker push "$version_image"
+          docker push "$sha_image"
+          repo_digest=$(docker image inspect "$version_image" --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep "^${registry_image}@sha256:" \
+            | head -n 1)
+          test -n "$repo_digest"
+          printf '%s\n' "$repo_digest" > dist/CONTAINER_IMAGE
+
       - name: Create immutable GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -186,10 +235,10 @@ jobs:
             release create "$GITHUB_REF_NAME"
             --repo "$GITHUB_REPOSITORY"
             --verify-tag
-            --title "InstabotAI ${{ steps.identity.outputs.version }}"
+            --title "InstabotAI ${{ needs.release.outputs.version }}"
             --generate-notes
           )
-          if [[ '${{ steps.identity.outputs.prerelease }}' == 'true' ]]; then
+          if [[ '${{ needs.release.outputs.prerelease }}' == 'true' ]]; then
             args+=(--prerelease)
           fi
           for artifact in dist/*; do
