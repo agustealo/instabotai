@@ -102,7 +102,11 @@ async def _run_worker(
         while True:
             try:
                 raw_tick = await service.worker_tick()
-                tick = raw_tick if isinstance(raw_tick, WorkerTick) else WorkerTick.model_validate(raw_tick)
+                tick = (
+                    raw_tick
+                    if isinstance(raw_tick, WorkerTick)
+                    else WorkerTick.model_validate(raw_tick)
+                )
                 status.last_tick_at = datetime.now(UTC)
                 status.last_planned_campaign_id = tick.planned_campaign_id
                 status.last_created_job_id = tick.created_job_id
@@ -160,17 +164,28 @@ def create_app(
                             content={"detail": "request body exceeds consumer API limit"},
                         )
                 except ValueError:
-                    return JSONResponse(status_code=400, content={"detail": "invalid Content-Length"})
+                    return JSONResponse(
+                        status_code=400,
+                        content={"detail": "invalid Content-Length"},
+                    )
 
             if request.headers.get("sec-fetch-site", "").lower() == "cross-site":
-                return JSONResponse(status_code=403, content={"detail": "cross-site mutation denied"})
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "cross-site mutation denied"},
+                )
 
             origin = request.headers.get("origin")
             if origin is not None and not _same_origin(request, origin):
-                return JSONResponse(status_code=403, content={"detail": "cross-origin mutation denied"})
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "cross-origin mutation denied"},
+                )
 
             if content_length not in {None, "0"}:
-                media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                media_type = (
+                    request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                )
                 if media_type != "application/json":
                     return JSONResponse(
                         status_code=415,
@@ -183,7 +198,11 @@ def create_app(
         if not worker_status.enabled or app.state.consumer_worker_task is not None:
             return
         app.state.consumer_worker_task = asyncio.create_task(
-            _run_worker(application_service, worker_status, active_settings.campaign_worker_poll_seconds),
+            _run_worker(
+                application_service,
+                worker_status,
+                active_settings.campaign_worker_poll_seconds,
+            ),
             name="instabotai-consumer-campaign-worker",
         )
 
