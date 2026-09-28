@@ -254,15 +254,16 @@ async def test_research_endpoint_routes_through_canonical_research_service() -> 
     }
 
 
-def test_remote_ui_bind_requires_explicit_opt_in() -> None:
+def test_consumer_ui_bind_is_loopback_only() -> None:
     active_settings = settings()
+    assert validate_ui_bind(active_settings, "127.0.0.1") == "127.0.0.1"
+    assert validate_ui_bind(active_settings, "localhost") == "localhost"
+    assert validate_ui_bind(active_settings, "::1") == "::1"
 
-    try:
-        validate_ui_bind(active_settings, "0.0.0.0")
-    except ValueError as exc:
-        assert "INSTABOTAI_UI_ALLOW_REMOTE=true" in str(exc)
-    else:
-        raise AssertionError("remote bind should fail closed")
-
-    allowed = settings(ui_allow_remote=True)
-    assert validate_ui_bind(allowed, "0.0.0.0") == "0.0.0.0"
+    for candidate in (active_settings, settings(ui_allow_remote=True)):
+        try:
+            validate_ui_bind(candidate, "0.0.0.0")
+        except ValueError as exc:
+            assert "loopback-only" in str(exc)
+        else:
+            raise AssertionError("remote bind should fail closed for the consumer alpha")
