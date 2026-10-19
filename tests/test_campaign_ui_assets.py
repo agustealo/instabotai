@@ -319,3 +319,10 @@ def test_evidence_library_ui_is_served_and_uses_existing_review_authority() -> N
     assert "stageCampaignDraft({" in code
     assert "No Instagram write occurs here" in code
     assert (static / "evidence-library.css").is_file()
+
+
+def test_campaign_job_filters_use_collection_selector() -> None:
+    static = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    script = (static / "campaigns.js").read_text(encoding="utf-8")
+    assert '$$(".campaign-job-filters [data-job-filter]").forEach(' in script
+    assert '$(".campaign-job-filters [data-job-filter]").forEach(' not in script

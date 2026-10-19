@@ -17,11 +17,14 @@ from collections.abc import Iterator
 import pytest
 import uvicorn
 
-playwright = pytest.importorskip("playwright.sync_api")
-from playwright.sync_api import Browser, Page, expect, sync_playwright  # noqa: E402
-
 from instabotai.settings import Settings
 from instabotai.web import create_app
+
+playwright = pytest.importorskip("playwright.sync_api")
+Browser = playwright.Browser
+Page = playwright.Page
+expect = playwright.expect
+sync_playwright = playwright.sync_playwright
 
 
 @pytest.fixture(scope="module")
