@@ -42,7 +42,20 @@ Source-level tests and automated CI do **not** establish that a human can comple
   closed through the canonical API and leave existing jobs and outcomes unchanged.
 - Cancel editing: the form must return to creation mode without writing any changes.
 
-## 5. Supervised execution and evidence
+## 5. Goal and research handoff
+
+- Enter a goal in AI Studio, continue to a supervised campaign form, and confirm the goal
+  transfers without running the planner or creating an Instagram action.
+- Select specific Research pages, inspect extracted text, and verify that only explicitly
+  selected sources are imported with original URLs and conservative confidence.
+- Try empty selections, an invalid URL, more than 20 sources, and a 13,000-character page.
+  Confirm the handoff rejects or bounds each case without dropping information silently.
+- Cancel the handoff while another campaign is being edited. Verify unsaved work remains.
+- Verify source selection by keyboard, mobile overflow, and form focus after navigation.
+- Verify all transfer data remains unsaved until a human creates the campaign draft, after
+  which activation and Instagram-action approval must still occur separately.
+
+## 6. Supervised execution and evidence
 
 - Activation, approving, rejecting, executing, cancelling, and archiving must each
   reveal enough context before a high-impact write, including the planned action payload.
