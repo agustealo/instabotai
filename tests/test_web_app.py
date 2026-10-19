@@ -296,6 +296,20 @@ async def test_campaign_edit_api_persists_and_rejects_stale_or_active_writes(
             },
         )
         assert created.status_code == 201
+        invalid_draft = await web.post(
+            "/api/campaigns",
+            json={"name": "Empty", "objective": "A valid objective", "evidence": []},
+        )
+        assert invalid_draft.status_code == 422
+        invalid_research = await web.post(
+            "/api/campaigns",
+            json={
+                "name": "Research test",
+                "objective": "An objective needing research",
+                "research_before_plan": True,
+            },
+        )
+        assert invalid_research.status_code == 422
         campaign = created.json()
         patch = {
             "expected_updated_at": campaign["updated_at"],

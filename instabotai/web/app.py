@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from instabotai import __version__
 from instabotai.application import InstabotApplication, PlanResult, RuntimeSnapshot
@@ -129,6 +129,22 @@ class CampaignCreateRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     research_seed_urls: list[str] = Field(default_factory=list, max_length=20)
     research_before_plan: bool = False
+
+    @field_validator("name", "objective")
+    @classmethod
+    def validate_meaningful_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("This field cannot be blank")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_planning_inputs(self) -> CampaignCreateRequest:
+        if self.research_before_plan and not self.research_seed_urls:
+            raise ValueError("Research requires at least one seed URL")
+        if not self.evidence and not self.research_before_plan:
+            raise ValueError("Add campaign evidence or enable research with seed URLs")
+        return self
 
 
 class CampaignUpdateRequest(CampaignCreateRequest):
