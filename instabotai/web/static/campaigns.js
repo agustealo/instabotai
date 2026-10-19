@@ -7,6 +7,8 @@ const campaignState = {
   initialized: false,
   editingCampaignId: null,
   editingVersion: null,
+  jobFilter: "review",
+  jobCampaign: "",
 };
 
 function campaignStatusKind(status) {
@@ -247,8 +249,8 @@ async function saveCampaignFromForm(event) {
 }
 
 async function refreshCampaignWorkspace(showErrors = true) {
-  const button = $("#refresh-campaigns");
-  setBusy(button, true, "Refreshing…");
+  const buttons = [$("#refresh-campaigns"), $("#refresh-jobs")];
+  buttons.forEach((button) => setBusy(button, true, "Refreshing…"));
   try {
     const [campaigns, jobs] = await Promise.all([
       api("/api/campaigns?limit=200"),
@@ -258,11 +260,12 @@ async function refreshCampaignWorkspace(showErrors = true) {
     campaignState.jobs = jobs;
     renderCampaignMetrics();
     renderCampaignList();
+    renderCampaignControls();
     renderCampaignJobs();
   } catch (error) {
     if (showErrors) showFlash(`Could not load campaign workspace: ${error.message}`, "error");
   } finally {
-    setBusy(button, false);
+    buttons.forEach((button) => setBusy(button, false));
   }
 }
 
@@ -412,6 +415,8 @@ function renderJobOutcome(job) {
     element("span", null, "This is the only signal fed back into campaign learning."),
   );
   const form = element("form", "outcome-form");
+  const rewardLabel = element("label", "outcome-field");
+  rewardLabel.append(element("span", null, "Business result score (0 to 1)"));
   const reward = element("input", "outcome-reward");
   reward.type = "number";
   reward.min = "0";
@@ -419,14 +424,17 @@ function renderJobOutcome(job) {
   reward.step = "0.05";
   reward.value = "0.5";
   reward.required = true;
-  reward.setAttribute("aria-label", "Outcome reward from zero to one");
+  rewardLabel.append(reward);
+  const noteLabel = element("label", "outcome-field");
+  noteLabel.append(element("span", null, "What actually happened?"));
   const note = element("input", "outcome-note-input");
   note.type = "text";
   note.maxLength = 4000;
-  note.placeholder = "What happened after execution?";
+  note.placeholder = "Observed engagement, leads, sales or another verifiable result";
+  noteLabel.append(note);
   const submit = element("button", "button button-secondary button-small", "Record outcome");
   submit.type = "submit";
-  form.append(reward, note, submit);
+  form.append(rewardLabel, noteLabel, submit);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     setBusy(submit, true, "Recording…");
@@ -447,14 +455,169 @@ function renderJobOutcome(job) {
   return box;
 }
 
+// The review inbox reads the canonical jobs endpoint. It never decides approvals itself.
+const CAMPAIGN_JOB_STAGES = {
+  review: ["pending_approval"],
+  scheduled: ["scheduled", "retry_wait", "leased"],
+  history: ["succeeded", "failed", "rejected", "cancelled"],
+};
+
+function campaignJobStage(job) {
+  if (CAMPAIGN_JOB_STAGES.review.includes(job.status)) return "review";
+  if (CAMPAIGN_JOB_STAGES.scheduled.includes(job.status)) return "scheduled";
+  return "history";
+}
+
+function visibleCampaignJobs() {
+  return campaignState.jobs
+    .filter((job) => !campaignState.jobCampaign || job.campaign_id === campaignState.jobCampaign)
+    .filter((job) => campaignState.jobFilter === "all" ||
+      campaignJobStage(job) === campaignState.jobFilter)
+    .slice()
+    .sort((a, b) => String(b.updated_at || b.created_at).localeCompare(
+      String(a.updated_at || a.created_at),
+    ));
+}
+
+function jobStageCopy(job) {
+  switch (job.status) {
+    case "pending_approval": return "Your decision is required. No execution is authorized by this state.";
+    case "scheduled": return "Approved and scheduled. The backend still checks policy when execution starts.";
+    case "retry_wait": return "Execution is awaiting an authorized retry; inspect the error and attempt count.";
+    case "leased": return "The worker has claimed this job. Its outcome is not confirmed yet.";
+    case "succeeded": return job.outcome_reward === null
+      ? "Provider execution succeeded. Business impact has not been recorded."
+      : "The observed business outcome was recorded separately from provider success.";
+    case "failed": return "Execution failed. Review the error; this is not a successful action.";
+    case "rejected": return "A reviewer rejected this proposed action. It was not executed.";
+    case "cancelled": return "This job was cancelled before execution.";
+    default: return "Check the job details to understand this state.";
+  }
+}
+
+function renderCampaignControls() {
+  const select = $("#campaign-job-campaign-select");
+  if (!select) return;
+  const selected = campaignState.campaigns.some(
+    (campaign) => campaign.campaign_id === campaignState.jobCampaign,
+  ) ? campaignState.jobCampaign : "";
+  campaignState.jobCampaign = selected;
+  const all = element("option", null, "All campaigns");
+  all.value = "";
+  const options = campaignState.campaigns.map((campaign) => {
+    const option = element("option", null, campaign.name);
+    option.value = campaign.campaign_id;
+    return option;
+  });
+  select.replaceChildren(all, ...options);
+  select.value = selected;
+
+  const scopedJobs = campaignState.jobs.filter(
+    (job) => !selected || job.campaign_id === selected,
+  );
+  for (const stage of ["review", "scheduled", "history", "all"]) {
+    const count = scopedJobs.filter(
+      (job) => stage === "all" || campaignJobStage(job) === stage,
+    ).length;
+    const label = $("[data-job-count='" + stage + "']");
+    if (label) label.textContent = String(count);
+    const button = $("[data-job-filter='" + stage + "']");
+    if (button) {
+      const active = campaignState.jobFilter === stage;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("button-secondary", active);
+      button.classList.toggle("button-ghost", !active);
+    }
+  }
+
+  const summary = $("#campaign-job-summary");
+  const awaiting = scopedJobs.filter((job) => job.status === "pending_approval").length;
+  const needsOutcome = scopedJobs.filter(
+    (job) => job.status === "succeeded" && job.outcome_reward === null,
+  ).length;
+  const failures = scopedJobs.filter((job) => job.status === "failed").length;
+  summary.replaceChildren(
+    metricCard("Needs your approval", String(awaiting), "Proposed writes not yet authorized"),
+    metricCard("Awaiting outcome", String(needsOutcome), "Provider success is not business success"),
+    metricCard("Failed actions", String(failures), "Inspect errors before planning again"),
+  );
+  const messages = {
+    review: "Only pending approvals are shown. Inspect the full payload and confirm each decision.",
+    scheduled: "Scheduled, retrying, or actively leased actions. The worker may change these states.",
+    history: "Provider results, failures, rejections, cancellations, and recorded business outcomes.",
+    all: "All returned jobs, newest updates first.",
+  };
+  $("#campaign-job-context").textContent =
+    messages[campaignState.jobFilter] +
+    " Showing the most recent " + campaignState.jobs.length + " of up to 200 returned jobs.";
+}
+
+function selectCampaignJobFilter(stage) {
+  if (!["review", "scheduled", "history", "all"].includes(stage)) return;
+  campaignState.jobFilter = stage;
+  renderCampaignControls();
+  renderCampaignJobs();
+}
+
+function summarizeProposedAction(action) {
+  const payload = action.payload || {};
+  const target = String(action.target_id || payload.comment_id || "Not specified");
+  const asText = (value) => typeof value === "string" && value.trim() ? value.trim() : "Not supplied";
+  if (action.action_type === "publish_image") {
+    return {
+      title: "Publish an image",
+      message: asText(payload.caption),
+      context: "Image URL: " + asText(payload.image_url),
+    };
+  }
+  if (action.action_type === "reply_to_comment") {
+    return {
+      title: "Reply to an Instagram comment",
+      message: asText(payload.message),
+      context: "Comment: " + target,
+    };
+  }
+  if (action.action_type === "hide_comment") {
+    return {
+      title: payload.hide === false ? "Unhide an Instagram comment" : "Hide an Instagram comment",
+      message: "Moderation target: " + target,
+      context: "Check the full action payload before approving.",
+    };
+  }
+  return {
+    title: "Review proposed Instagram action",
+    message: String(action.reason || "Reason not supplied"),
+    context: "Check the full action payload before approving.",
+  };
+}
+
+function renderActionPreview(action) {
+  const proposed = summarizeProposedAction(action);
+  const box = element("div", "campaign-action-preview");
+  box.append(
+    element("span", "campaign-preview-label", "Proposed Instagram action"),
+    element("strong", "campaign-preview-title", proposed.title),
+    element("p", "campaign-preview-message", proposed.message),
+    element("p", "campaign-preview-context", proposed.context),
+  );
+  return box;
+}
+
 function renderCampaignJobs() {
   const target = $("#campaign-job-list");
-  if (!campaignState.jobs.length) {
-    target.replaceChildren(element("div", "empty-state", "No campaign jobs have been planned yet."));
+  const visible = visibleCampaignJobs();
+  if (!visible.length) {
+    const messages = {
+      review: "Nothing awaits your approval. New proposals will appear here after planning.",
+      scheduled: "Nothing is scheduled or retrying. Approved work will appear here.",
+      history: "No completed actions or results yet. This history fills in after execution.",
+      all: "No campaign jobs yet. Create and plan a campaign to propose the first action.",
+    };
+    target.replaceChildren(element("div", "empty-state", messages[campaignState.jobFilter]));
     return;
   }
 
-  const cards = campaignState.jobs.map((job) => {
+  const cards = visible.map((job) => {
     const campaign = campaignById(job.campaign_id);
     const card = element("article", "campaign-job-card");
     const header = element("div", "campaign-card-header");
@@ -464,10 +627,14 @@ function renderCampaignJobs() {
       element("p", "campaign-objective", `${humanize(job.action.action_type)} · ${job.action.reason}`),
     );
     header.append(copy, pill(humanize(job.status), campaignStatusKind(job.status)));
+    card.append(
+      element("p", "campaign-job-explanation", jobStageCopy(job)),
+      renderActionPreview(job.action),
+    );
 
     const meta = element("div", "campaign-meta job-meta");
     [
-      ["Confidence", formatPercent(job.action.confidence)],
+      ["AI confidence", formatPercent(job.action.confidence)],
       ["Approval", humanize(job.action.approval)],
       ["Scheduled", formatDate(job.scheduled_for)],
       ["Attempts", `${job.attempt_count}/${job.max_attempts}`],
@@ -518,7 +685,8 @@ function renderCampaignJobs() {
     }
     details.append(summary, body);
 
-    card.append(header, meta, actions, details, renderJobOutcome(job));
+    card.prepend(header);
+    card.append(meta, actions, details, renderJobOutcome(job));
     return card;
   });
   target.replaceChildren(...cards);
@@ -540,6 +708,15 @@ function initializeCampaignWorkspace() {
   $("#campaign-cadence").addEventListener("change", syncCampaignCadence);
   $("#campaign-research-enabled").addEventListener("change", toggleCampaignResearchFields);
   $("#refresh-campaigns").addEventListener("click", () => refreshCampaignWorkspace(true));
+  $("#refresh-jobs").addEventListener("click", () => refreshCampaignWorkspace(true));
+  $(".campaign-job-filters [data-job-filter]").forEach((button) => {
+    button.addEventListener("click", () => selectCampaignJobFilter(button.dataset.jobFilter));
+  });
+  $("#campaign-job-campaign-select").addEventListener("change", (event) => {
+    campaignState.jobCampaign = event.target.value;
+    renderCampaignControls();
+    renderCampaignJobs();
+  });
   const nav = $('.nav-item[data-view="campaigns"]');
   if (nav) nav.addEventListener("click", () => refreshCampaignWorkspace(true));
   toggleCampaignResearchFields();

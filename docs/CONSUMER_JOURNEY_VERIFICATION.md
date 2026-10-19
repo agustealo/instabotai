@@ -52,7 +52,24 @@ Source-level tests and automated CI do **not** establish that a human can comple
 - Verify rollback/restart behavior, provider ambiguity, idempotency and retry safety,
   and no implicit authorization through AI output.
 
-## 6. UX, accessibility, and release gates
+## 6. Approval inbox and activity usability
+
+- With no pending approvals, the default **Needs approval** stage must state clearly
+  that nothing needs authorization, even if scheduled or historical jobs exist.
+- With pending approvals, verify action-specific preview content and full-payload
+  confirmation for image publishing, comment replies, and hide/unhide moderation.
+  Backend policy remains the only source of permission to execute.
+- Confirm Scheduled groups scheduled, retry-wait, and leased jobs while Results & history
+  groups succeeded, failed, rejected, and cancelled jobs.
+- Confirm newest-first ordering, per-campaign filtering, refresh, counts, and empty states.
+- For a succeeded job with no observed outcome, verify **Awaiting outcome** is
+  displayed; provider success must never be described as business success.
+- Use keyboard and screen readers with the filter buttons, `aria-pressed` state,
+  campaign selector, and visibly labeled outcome fields.
+- The list endpoint is limited to recent entries (up to 200 jobs). Check that the
+  UI never presents this as an exhaustive audit history or a live streaming feed.
+
+## 7. UX, accessibility, and release gates
 
 - Complete all journeys using keyboard only, including the confirmation dialog's Escape
   and Go back behavior; ensure visible focus and screen-reader labels.

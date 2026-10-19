@@ -45,7 +45,7 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert 'section.id = "view-campaigns"' in shell.text
     assert "Campaign planning and provider execution are deliberately separate" in shell.text
     assert "/assets/trial-evidence.js" in shell.text
-    assert "export its secret-free evidence" in shell.text
+    assert "Review what AI proposed" in shell.text
 
     assert script.status_code == 200
     assert "function canExecuteJob(job)" in script.text
@@ -104,3 +104,96 @@ def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
             text=True,
         )
         assert result.returncode == 0, f"{asset}: {result.stderr}"
+
+
+def test_campaign_inbox_stage_filtering_without_backend_mock_when_node_available() -> None:
+    """The inbox groups actual backend job status values, not invented lifecycle flags."""
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable in this environment")
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "instabotai"
+        / "web"
+        / "static"
+        / "campaigns.js"
+    )
+    harness = r"""
+const fs = require("node:fs");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const jobs = [
+  ["a", "pending_approval", "campaign-a"],
+  ["b", "scheduled", "campaign-a"],
+  ["c", "leased", "campaign-a"],
+  ["d", "retry_wait", "campaign-a"],
+  ["e", "succeeded", "campaign-a"],
+  ["f", "failed", "campaign-a"],
+  ["g", "rejected", "campaign-b"],
+  ["h", "cancelled", "campaign-b"],
+].map(([job_id, status, campaign_id], idx) => ({
+  job_id, status, campaign_id, outcome_reward: null,
+  created_at: "2026-10-19T10:00:00Z",
+  updated_at: "2026-10-19T10:" + String(idx).padStart(2, "0") + ":00Z",
+}));
+const assert = require("node:assert/strict");
+const verify = new Function("document", "jobs", "assert", source + `
+campaignState.jobs = jobs;
+const check = (filter, count) => {
+  campaignState.jobFilter = filter;
+  assert.equal(visibleCampaignJobs().length, count, filter);
+};
+check("review", 1);
+check("scheduled", 3);
+check("history", 4);
+check("all", 8);
+assert.equal(visibleCampaignJobs()[0].job_id, "h", "newest updates first");
+campaignState.jobCampaign = "campaign-a";
+check("review", 1);
+check("scheduled", 3);
+check("history", 2);
+check("all", 6);
+assert.match(jobStageCopy(jobs[0]), /decision is required/i);
+assert.match(jobStageCopy(jobs[4]), /business impact has not been recorded/i);
+assert.equal(
+  summarizeProposedAction({action_type: "publish_image", payload: {caption: "Launch"}}).message,
+  "Launch",
+);
+assert.equal(
+  summarizeProposedAction({
+    action_type: "reply_to_comment", target_id: "123", payload: {message: "Thanks!"},
+  }).context,
+  "Comment: 123",
+);
+assert.match(
+  summarizeProposedAction({action_type: "hide_comment", payload: {hide: false}}).title,
+  /Unhide/,
+);
+`);
+verify({addEventListener() {}}, jobs, assert);
+"""
+    result = subprocess.run(
+        [node, "-e", harness, str(script)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_campaign_inbox_has_accessible_controls_and_stages() -> None:
+    static_dir = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    shell = (static_dir / "campaigns-shell.js").read_text(encoding="utf-8")
+    script = (static_dir / "campaigns.js").read_text(encoding="utf-8")
+    styles = (static_dir / "campaigns.css").read_text(encoding="utf-8")
+    assert "Approvals and campaign activity" in shell
+    assert 'aria-label="Show campaign actions by stage"' in shell
+    assert 'aria-pressed="true"' in shell
+    assert 'id="campaign-job-campaign-select"' in shell
+    assert "function visibleCampaignJobs()" in script
+    assert "function renderCampaignControls()" in script
+    assert "function jobStageCopy(job)" in script
+    assert "function renderActionPreview(action)" in script
+    assert "Business result score (0 to 1)" in script
+    assert ".campaign-job-summary" in styles
