@@ -80,6 +80,14 @@ Research now offers opt-in per-page selection and extracted-text inspection. Sel
 
 The transfer exists only in the current browser form until **Create campaign** is deliberately submitted. It does not create a durable reusable research library or substitute for human verification, campaign review, approval, policy, or provider execution.
 
+### Evidence Library
+
+The Evidence Library is a persisted consumer workspace using the canonical SQLite state database and schema migration v4. New entries are **Unverified** whether manually submitted or imported from research. A user can explicitly label an entry Reviewed or Rejected, edit its contents, search by title/source, add tags and review notes, or delete it with an explicit confirmation. Edited source, content or confidence resets the status to Unverified, even when the same request tries to set Reviewed. Review labels reflect a user's judgment and are **not** independent verification.
+
+The API supports bounded paging and optimistic `updated_at` conflict checking. Stale edits and deletes fail rather than overwriting another update. The library stores a unique `library_id`, and a stable `library-{id}` evidence identifier is generated when attaching. An attachment **copies** the existing canonical evidence shape into the current campaign draft/form; later library edits or deletion never rewrite saved campaigns, scheduled work or provider results. Only draft/paused campaigns can be edited through existing canonical checks, and all changes still require explicit save and write approval.
+
+Research selection can also save up to 20 bounded extracts as unverified library records. A partially successful multi-source save is reported honestly, without claiming atomic batch import. Browsing the library never triggers model inference, research crawling, Instagram access or social writes. The new workspace is local-only under the existing loopback consumer console. The library search supports up to 200 entries per page; it is not a substitute for independent source validation or a full browser E2E acceptance trial.
+
 ### AI Studio
 
 The AI Studio is an operator surface for the genuine intelligence system, not a decorative chat wrapper.
