@@ -724,10 +724,16 @@ function renderResearch(report) {
     button.addEventListener("click", async () => {
       const picked = $(".research-pick:checked", root)
         .map((check) => Number(check.dataset.pageIndex));
-      const evidence = picked.map((index) => researchPageToDraftEvidence(
-        report.pages[index], index, report.confidence,
-      ));
-      const objective = $("#research-objective").value.trim();
+      let evidence;
+      try {
+        evidence = picked.map((index) => researchPageToDraftEvidence(
+          report.pages[index], index, report.confidence,
+        ));
+      } catch (error) {
+        showFlash("Cannot import source: " + error.message, "error");
+        return;
+      }
+      const objective = report.objective;
       if (typeof stageCampaignDraft !== "function") {
         showFlash("Campaign editor is still loading. Open Campaigns and try again.", "error");
         return;

@@ -161,7 +161,7 @@ function resetCampaignEditor() {
 }
 
 function suggestedCampaignName(objective) {
-  return objective.split(/[.!?\\n]/)[0].trim().slice(0, 90);
+  return objective.split(/[.!?\n]/)[0].trim().slice(0, 90);
 }
 
 async function stageCampaignDraft({ objective, evidence = [], seedUrls = [], sourceLabel }) {
@@ -185,10 +185,10 @@ async function stageCampaignDraft({ objective, evidence = [], seedUrls = [], sou
     title: "Prepare a supervised campaign draft?",
     description: "This replaces unsaved text in the campaign form, not saved campaigns. " +
       "No Instagram action will be planned, approved or executed.",
-    details: "From: " + sourceLabel + "\\nGoal: " + objective.trim() +
-      "\\nEvidence items: " + evidence.length +
-      "\\nSource URLs: " + seedUrls.length +
-      "\\nNext: review and explicitly create the draft.",
+    details: "From: " + sourceLabel + "\nGoal: " + objective.trim() +
+      "\nEvidence items: " + evidence.length +
+      "\nSource URLs: " + seedUrls.length +
+      "\nNext: review and explicitly create the draft.",
     confirmLabel: "Prepare draft",
   });
   if (!yes) return false;
@@ -196,7 +196,7 @@ async function stageCampaignDraft({ objective, evidence = [], seedUrls = [], sou
   $("#campaign-name").value = suggestedCampaignName(objective);
   $("#campaign-objective").value = objective.trim();
   $("#campaign-mode").value = "supervised";
-  $("#campaign-research-seeds").value = seedUrls.join("\\n");
+  $("#campaign-research-seeds").value = seedUrls.join("\n");
   $("#campaign-evidence-list").replaceChildren();
   for (const item of evidence) addCampaignEvidence(item);
   if (!evidence.length) addCampaignEvidence();
