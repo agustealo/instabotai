@@ -73,7 +73,7 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert 'api("/api/consumer")' in setup_script.text
     assert 'api("/api/runtime")' in setup_script.text
     assert 'document.querySelector("#view-overview .hero [data-go]")' in setup_script.text
-    assert 'api("/api/readiness/probe"' in setup_script.text
+    assert 'api(live ? "/api/readiness/probe" : "/api/readiness"' in setup_script.text
     assert "Credentials are configured on your machine" in setup_script.text
     assert setup_stylesheet.status_code == 200
     assert ".setup-progress" in setup_stylesheet.text
