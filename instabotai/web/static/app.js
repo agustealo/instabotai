@@ -23,6 +23,11 @@
     setup.src = "/assets/setup.js";
     setup.async = false;
     document.head.append(setup);
+
+    const library = document.createElement("script");
+    library.src = "/assets/evidence-library.js";
+    library.async = false;
+    document.head.append(library);
   });
   document.head.append(core);
 })();

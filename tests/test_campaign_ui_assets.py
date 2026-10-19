@@ -96,6 +96,7 @@ def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
         "campaigns.js",
         "trial-evidence.js",
         "setup.js",
+        "evidence-library.js",
     ):
         result = subprocess.run(
             [node, "--check", str(static_dir / asset)],
@@ -300,3 +301,21 @@ const stage = new Function(
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_evidence_library_ui_is_served_and_uses_existing_review_authority() -> None:
+    static = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    loader = (static / "app.js").read_text(encoding="utf-8")
+    code = (static / "evidence-library.js").read_text(encoding="utf-8")
+    assert "/assets/evidence-library.js" in loader
+    assert "function entryAsCampaignEvidence(entry)" in code
+    assert 'method:"PATCH"' in code
+    assert 'method:"DELETE"' in code
+    assert 'api("/api/evidence-library"' in code
+    assert '"unverified"' in code
+    assert 'openView("campaigns")' in code
+    assert "saveSelectedResearchToLibrary" in code
+    assert "beginCampaignEdit(campaign)" in code
+    assert "stageCampaignDraft({" in code
+    assert "No Instagram write occurs here" in code
+    assert (static / "evidence-library.css").is_file()

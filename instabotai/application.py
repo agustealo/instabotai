@@ -17,6 +17,12 @@ from instabotai.campaigns import (
 )
 from instabotai.domain import ActionType, PlannedAction, ResearchReport
 from instabotai.evidence import TrialEvidenceBundle, TrialEvidenceService
+from instabotai.evidence_library import (
+    EvidenceLibraryCreate,
+    EvidenceLibraryEntry,
+    EvidenceLibraryStore,
+    EvidenceLibraryUpdate,
+)
 from instabotai.intelligence import (
     DecisionJournal,
     EvidenceItem,
@@ -111,6 +117,7 @@ class InstabotApplication:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.state_schema = self._prepare_state_schema(settings.state_db_path)
+        self.evidence_library = EvidenceLibraryStore(settings.state_db_path)
 
     @staticmethod
     def _prepare_state_schema(database_path: str) -> StateSchemaReport:
@@ -307,6 +314,27 @@ class InstabotApplication:
             )
         finally:
             runtime.close()
+
+    def create_library_evidence(self, payload: EvidenceLibraryCreate) -> EvidenceLibraryEntry:
+        return self.evidence_library.create(payload)
+
+    def list_library_evidence(
+        self, *, limit: int = 100, offset: int = 0, query: str = "",
+    ) -> tuple[EvidenceLibraryEntry, ...]:
+        return self.evidence_library.list(limit=limit, offset=offset, query=query)
+
+    def get_library_evidence(self, library_id: str) -> EvidenceLibraryEntry:
+        return self.evidence_library.get(library_id)
+
+    def update_library_evidence(
+        self, library_id: str, payload: EvidenceLibraryUpdate,
+    ) -> EvidenceLibraryEntry:
+        return self.evidence_library.update(library_id, payload)
+
+    def delete_library_evidence(
+        self, library_id: str, *, expected_updated_at: datetime,
+    ) -> None:
+        self.evidence_library.delete(library_id, expected_updated_at=expected_updated_at)
 
     def list_campaigns(self, limit: int = 100) -> tuple[Campaign, ...]:
         runtime = CampaignRuntime(self.settings)

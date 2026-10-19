@@ -55,7 +55,26 @@ Source-level tests and automated CI do **not** establish that a human can comple
 - Verify all transfer data remains unsaved until a human creates the campaign draft, after
   which activation and Instagram-action approval must still occur separately.
 
-## 6. Supervised execution and evidence
+## 6. Persistent evidence library
+
+- From Research, select two permitted source pages and choose **Save selected to library**.
+  Verify they are persisted, initially unverified, and available after restarting the runtime.
+- Search by title/source and page through results; tag and revise an entry with the original
+  source text intact. Mark it Reviewed, then modify its source or confidence and verify
+  its review automatically resets to Unverified.
+- Open the same entry in two tabs: the later stale save and deletion must receive a conflict.
+  Reject an entry and verify the UI refuses to attach it to a campaign.
+- Select saved evidence, enter a goal, and prepare a new supervised campaign form. Nothing
+  is created, planned or published until the user explicitly saves the campaign and later
+  approves an action.
+- Attach saved evidence to an existing draft or paused campaign. Check that the user is
+  taken to the existing editor and must save; active/archived campaigns cannot be edited.
+- Edit or delete the library record after it has been saved in a campaign and verify the
+  campaign evidence snapshot and any queued jobs remain unchanged.
+- Validate keyboard, screen reader, responsive layout, empty states and clear failure
+  messages for unavailable local storage, partial imports and invalid entries.
+
+## 7. Supervised execution and evidence
 
 - Activation, approving, rejecting, executing, cancelling, and archiving must each
   reveal enough context before a high-impact write, including the planned action payload.

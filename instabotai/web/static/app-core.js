@@ -734,6 +734,7 @@ function renderResearch(report) {
     const update = () => {
       const count = root.querySelectorAll(".research-pick:checked").length;
       button.disabled = count === 0 || count > 20;
+      saveToLibrary.disabled = button.disabled;
       note.textContent = count > 20 ? "Select at most 20 sources" :
         count ? count + " source(s) selected for review" : "No sources selected";
     };
@@ -760,7 +761,19 @@ function renderResearch(report) {
         sourceLabel: "selected public-web research",
       });
     });
-    handoff.append(heading, description, button, note);
+    const saveToLibrary = element("button", "button button-secondary", "Save selected to library");
+    saveToLibrary.type = "button";
+    saveToLibrary.disabled = true;
+    saveToLibrary.addEventListener("click", async () => {
+      const picked = Array.from(root.querySelectorAll(".research-pick:checked"))
+        .map((check) => Number(check.dataset.pageIndex));
+      if (typeof saveSelectedResearchToLibrary !== "function") {
+        showFlash("Evidence Library is unavailable. Reload and try again.", "error");
+        return;
+      }
+      await saveSelectedResearchToLibrary(report, picked);
+    });
+    handoff.append(heading, description, button, saveToLibrary, note);
     root.append(handoff);
     report.pages.forEach((page, index) => {
       const card = root.querySelectorAll(".research-page")[index];

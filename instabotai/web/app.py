@@ -26,6 +26,13 @@ from instabotai.campaigns import (
 )
 from instabotai.domain import ResearchReport
 from instabotai.evidence import TrialEvidenceBundle
+from instabotai.evidence_library import (
+    EvidenceConflictError,
+    EvidenceLibraryCreate,
+    EvidenceLibraryEntry,
+    EvidenceLibraryUpdate,
+    EvidenceNotFoundError,
+)
 from instabotai.intelligence import EvidenceItem, IntelligenceDecision, IntelligenceProbe
 from instabotai.intelligence.providers import IntelligenceProviderError
 from instabotai.providers.instagram import InstagramProviderError
@@ -77,6 +84,17 @@ class ApplicationService(Protocol):
         research_seed_urls: list[str],
         research_before_plan: bool,
     ) -> Campaign: ...
+    def create_library_evidence(self, payload: EvidenceLibraryCreate) -> EvidenceLibraryEntry: ...
+    def list_library_evidence(
+        self, *, limit: int = 100, offset: int = 0, query: str = "",
+    ) -> tuple[EvidenceLibraryEntry, ...]: ...
+    def get_library_evidence(self, library_id: str) -> EvidenceLibraryEntry: ...
+    def update_library_evidence(
+        self, library_id: str, payload: EvidenceLibraryUpdate,
+    ) -> EvidenceLibraryEntry: ...
+    def delete_library_evidence(
+        self, library_id: str, *, expected_updated_at: datetime,
+    ) -> None: ...
     def list_campaigns(self, limit: int = 100) -> tuple[Campaign, ...]: ...
     def activate_campaign(self, campaign_id: str) -> Campaign: ...
     def pause_campaign(self, campaign_id: str) -> Campaign: ...
@@ -157,6 +175,10 @@ class CampaignUpdateRequest(CampaignCreateRequest):
     expected_updated_at: datetime
 
 
+class EvidenceDeleteRequest(BaseModel):
+    expected_updated_at: datetime
+
+
 class OutcomeRequest(BaseModel):
     reward: float = Field(ge=0.0, le=1.0)
     note: str = Field(default="", max_length=4_000)
@@ -218,6 +240,14 @@ def create_app(
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.exception_handler(EvidenceNotFoundError)
+    async def evidence_not_found(_: Request, exc: EvidenceNotFoundError) -> JSONResponse:
+        return _error_response("evidence_not_found", str(exc), 404)
+
+    @app.exception_handler(EvidenceConflictError)
+    async def evidence_conflict(_: Request, exc: EvidenceConflictError) -> JSONResponse:
+        return _error_response("evidence_conflict", str(exc), 409)
 
     @app.exception_handler(CampaignNotFoundError)
     async def campaign_not_found(_: Request, exc: CampaignNotFoundError) -> JSONResponse:
@@ -320,6 +350,42 @@ def create_app(
                 objective=payload.objective,
                 seed_urls=payload.seed_urls,
             )
+
+    @app.post(
+        "/api/evidence-library", response_model=EvidenceLibraryEntry, status_code=201,
+    )
+    async def create_evidence(payload: EvidenceLibraryCreate) -> EvidenceLibraryEntry:
+        return application_service.create_library_evidence(payload)
+
+    @app.get("/api/evidence-library", response_model=list[EvidenceLibraryEntry])
+    async def library_evidence(
+        limit: int = Query(default=100, ge=1, le=200),
+        offset: int = Query(default=0, ge=0, le=100_000),
+        query: str = Query(default="", max_length=160),
+    ) -> list[EvidenceLibraryEntry]:
+        return list(
+            application_service.list_library_evidence(
+                limit=limit, offset=offset, query=query,
+            )
+        )
+
+    @app.get("/api/evidence-library/{library_id}", response_model=EvidenceLibraryEntry)
+    async def get_library_evidence(library_id: str) -> EvidenceLibraryEntry:
+        return application_service.get_library_evidence(library_id)
+
+    @app.patch("/api/evidence-library/{library_id}", response_model=EvidenceLibraryEntry)
+    async def update_library_evidence(
+        library_id: str, payload: EvidenceLibraryUpdate,
+    ) -> EvidenceLibraryEntry:
+        return application_service.update_library_evidence(library_id, payload)
+
+    @app.delete("/api/evidence-library/{library_id}", status_code=204)
+    async def delete_library_evidence(
+        library_id: str, payload: EvidenceDeleteRequest,
+    ) -> None:
+        application_service.delete_library_evidence(
+            library_id, expected_updated_at=payload.expected_updated_at,
+        )
 
     @app.post("/api/campaigns", response_model=Campaign, status_code=201)
     async def create_campaign(payload: CampaignCreateRequest) -> Campaign:

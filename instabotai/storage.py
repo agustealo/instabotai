@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from instabotai import __version__
 
-STATE_SCHEMA_VERSION = 3
+STATE_SCHEMA_VERSION = 4
 _SCHEMA_TABLE = "instabotai_schema"
 _MANAGED_TABLES = frozenset(
     {
@@ -21,6 +21,7 @@ _MANAGED_TABLES = frozenset(
         "ai_experiences",
         "campaigns",
         "campaign_jobs",
+        "evidence_library",
     }
 )
 
@@ -167,6 +168,7 @@ def ensure_state_schema(
             (1, _migrate_v1_core_state),
             (2, _migrate_v2_campaigns_and_outcome_keys),
             (3, _migrate_v3_retry_safety_and_indexes),
+            (4, _migrate_v4_evidence_library),
         )
         for version, migration in migrations:
             if current_version < version:
@@ -355,6 +357,35 @@ def _migrate_v3_retry_safety_and_indexes(connection: sqlite3.Connection) -> None
     )
 
 
+def _migrate_v4_evidence_library(connection: sqlite3.Connection) -> None:
+    """Persist reusable evidence separately from immutable campaign evidence snapshots."""
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS evidence_library (
+            library_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            source TEXT NOT NULL,
+            content TEXT NOT NULL,
+            confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+            origin TEXT NOT NULL CHECK (origin IN ('manual', 'research')),
+            review_status TEXT NOT NULL
+                CHECK (review_status IN ('unverified', 'reviewed', 'rejected')),
+            tags_json TEXT NOT NULL,
+            note TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_evidence_library_updated
+        ON evidence_library (updated_at DESC)
+        """
+    )
+
+
 def _create_schema_table(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
@@ -472,6 +503,19 @@ def _verify_current_schema(connection: sqlite3.Connection) -> None:
             "consecutive_failures",
             "plan_claim_token",
             "plan_claim_expires_at",
+            "created_at",
+            "updated_at",
+        },
+        "evidence_library": {
+            "library_id",
+            "title",
+            "source",
+            "content",
+            "confidence",
+            "origin",
+            "review_status",
+            "tags_json",
+            "note",
             "created_at",
             "updated_at",
         },

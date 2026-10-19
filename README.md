@@ -44,7 +44,8 @@ The GUI uses the same canonical application/runtime authorities as the CLI. Ship
 - **AI Studio**: live model probe, typed evidence, bounded context, planner + critic execution, scores, abstention, and pending-action inspection. Move your goal and entered evidence to a supervised campaign draft without executing the model's proposal.
 - **Campaigns**: a status-filtered **approval inbox and recent activity** with action previews, campaign filters, and explicit outcome/failure counts; creation, safe draft/paused editing, human-readable scheduling presets (or custom intervals), optional research-before-plan, controlled execution, retry/error/provider inspection, idempotency inspection, and recorded business-outcome feedback.
 - **Decision Audit**: durable `DecisionJournal` browsing and filtering.
-- **Adaptive Research**: Crawl4AI-backed objective/seed research with confidence, relevance, blocked/failed URLs, and hardened destination validation. Select pages and send source excerpts to a supervised campaign draft without manually entering evidence IDs.
+- **Adaptive Research**: Crawl4AI-backed objective/seed research with confidence, relevance, blocked/failed URLs, and hardened destination validation. Select pages, prefill a supervised campaign, or save them in a persistent Evidence Library.
+- **Evidence Library**: Search and organize saved sources, explicitly mark them Unverified/Reviewed/Rejected, edit with stale-version protection, and attach snapshots to new or editable campaigns. Reviewed means the user examined the material, not third-party fact certification.
 - **Account**: read-only profile retrieval through the selected Instagram provider with secret-free readiness state.
 
 Campaign execution from the GUI is not a shortcut around policy. Executable work still flows through:

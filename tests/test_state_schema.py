@@ -124,7 +124,7 @@ def test_upgrade_preserves_legacy_state_and_creates_verified_backup(tmp_path: Pa
     assert experience["objective"] == "legacy objective"
     assert experience["source_key"] is None
     assert version is not None and version["version"] == STATE_SCHEMA_VERSION
-    assert {"campaigns", "campaign_jobs"}.issubset(campaign_tables)
+    assert {"campaigns", "campaign_jobs", "evidence_library"}.issubset(campaign_tables)
 
     backup_connection = sqlite3.connect(backup)
     try:
@@ -240,5 +240,6 @@ def test_fresh_upgrade_creates_current_schema_without_backup(tmp_path: Path) -> 
         "automation_actions",
         "campaign_jobs",
         "campaigns",
+        "evidence_library",
         "instabotai_schema",
     }
