@@ -123,7 +123,9 @@ class EvidenceLibraryStore:
             upgrade_state_database(database_path)
 
     def _connection(self) -> sqlite3.Connection:
-        return self._memory if self._memory is not None else open_state_connection(self.database_path)
+        if self._memory is not None:
+            return self._memory
+        return open_state_connection(self.database_path)
 
     def _release(self, connection: sqlite3.Connection) -> None:
         if self._memory is None:
