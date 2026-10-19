@@ -767,7 +767,7 @@ function initializeCampaignWorkspace() {
   $("#campaign-research-enabled").addEventListener("change", toggleCampaignResearchFields);
   $("#refresh-campaigns").addEventListener("click", () => refreshCampaignWorkspace(true));
   $("#refresh-jobs").addEventListener("click", () => refreshCampaignWorkspace(true));
-  $(".campaign-job-filters [data-job-filter]").forEach((button) => {
+  $$(".campaign-job-filters [data-job-filter]").forEach((button) => {
     button.addEventListener("click", () => selectCampaignJobFilter(button.dataset.jobFilter));
   });
   $("#campaign-job-campaign-select").addEventListener("change", (event) => {
