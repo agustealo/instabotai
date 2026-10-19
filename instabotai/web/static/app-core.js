@@ -717,12 +717,12 @@ function renderResearch(report) {
     button.disabled = true;
     const note = element("span", "form-note", "No sources selected");
     const update = () => {
-      const count = $(".research-pick:checked", root).length;
+      const count = root.querySelectorAll(".research-pick:checked").length;
       button.disabled = count === 0;
       note.textContent = count ? count + " source(s) selected for review" : "No sources selected";
     };
     button.addEventListener("click", async () => {
-      const picked = $(".research-pick:checked", root)
+      const picked = Array.from(root.querySelectorAll(".research-pick:checked"))
         .map((check) => Number(check.dataset.pageIndex));
       let evidence;
       try {
@@ -747,7 +747,7 @@ function renderResearch(report) {
     handoff.append(heading, description, button, note);
     root.append(handoff);
     report.pages.forEach((page, index) => {
-      const card = $(".research-page", root)[index];
+      const card = root.querySelectorAll(".research-page")[index];
       if (!card) return;
       const label = element("label", "research-pick-label");
       const check = element("input", "research-pick");
