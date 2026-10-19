@@ -12,8 +12,7 @@ import socket
 import threading
 import time
 import urllib.request
-from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 
 import pytest
 import uvicorn
@@ -203,8 +202,8 @@ def test_research_selection_persists_as_unverified_without_external_network(
         "button", name="Save to library"
     ).click()
     expect(page.locator("#view-library")).to_have_class("view is-active")
-    expect(page.locator(".library-entry")).to_contain_text("Autumn trends report")
-    expect(page.locator(".library-entry")).to_contain_text("Unverified")
+    expect(page.locator(".library-entry").filter(has_text="Autumn trends report")).to_be_visible()
+    expect(page.locator(".library-entry").filter(has_text="Autumn trends report")).to_contain_text("Unverified")
 
 
 def test_stale_browser_review_is_rejected_without_overwriting(
@@ -230,13 +229,19 @@ def test_stale_browser_review_is_rejected_without_overwriting(
         for page in (a, b):
             page.goto(consumer_url, wait_until="domcontentloaded")
             open_library(page)
-            expect(page.locator(".library-entry")).to_contain_text("Concurrency proof")
+            expect(page.locator(".library-entry").filter(has_text="Concurrency proof")).to_be_visible()
 
-        a.get_by_role("button", name="Mark reviewed", exact=True).click()
+        a.locator(".library-entry").filter(has_text="Concurrency proof").get_by_role(
+            "button", name="Mark reviewed", exact=True,
+        ).click()
         a.locator("dialog[open]").get_by_role("button", name="Mark reviewed").click()
-        expect(a.locator(".library-entry")).to_contain_text("Reviewed")
+        expect(a.locator(".library-entry").filter(has_text="Concurrency proof")).to_contain_text(
+            "Reviewed"
+        )
 
-        b.locator(".library-entry-actions").get_by_role("button", name="Edit").click()
+        b.locator(".library-entry").filter(has_text="Concurrency proof").get_by_role(
+            "button", name="Edit",
+        ).click()
         b.locator("#library-content").fill("Unauthorized stale replacement")
         b.locator("#library-save").click()
         b.locator("dialog[open]").get_by_role("button", name="Save changes").click()
