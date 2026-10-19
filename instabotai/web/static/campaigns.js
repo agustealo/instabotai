@@ -5,6 +5,8 @@ const campaignState = {
   jobs: [],
   evidenceCounter: 0,
   initialized: false,
+  editingCampaignId: null,
+  editingVersion: null,
 };
 
 function campaignStatusKind(status) {
@@ -104,7 +106,87 @@ function collectCampaignSeeds() {
     .filter(Boolean);
 }
 
-async function createCampaignFromForm(event) {
+function readableCampaignCadence(minutes) {
+  const frequency = {
+    1440: "Once a day",
+    720: "Twice a day",
+    360: "Every 6 hours",
+    10080: "Once a week",
+  };
+  return frequency[minutes] || `Every ${minutes} minutes`;
+}
+
+function syncCampaignCadence() {
+  const field = $("#campaign-cadence");
+  const preset = $("#campaign-cadence-preset");
+  const value = String(Number(field.value));
+  const predefined = ["1440", "720", "360", "10080"].includes(value);
+  preset.value = predefined ? value : "custom";
+  $("#campaign-cadence-custom-field").classList.toggle("is-hidden", predefined);
+  $("#campaign-cadence-help").textContent = predefined
+    ? readableCampaignCadence(Number(value)) + ". Approval is still required before any write."
+    : "Specify a custom interval. The backend validates the final number of minutes.";
+}
+
+function applyCampaignCadencePreset() {
+  const preset = $("#campaign-cadence-preset").value;
+  if (preset === "custom") {
+    $("#campaign-cadence-custom-field").classList.remove("is-hidden");
+    $("#campaign-cadence-help").textContent =
+      "Specify a custom interval. The backend validates the final number of minutes.";
+    $("#campaign-cadence").focus();
+    return;
+  }
+  $("#campaign-cadence").value = preset;
+  syncCampaignCadence();
+}
+
+function resetCampaignEditor() {
+  campaignState.editingCampaignId = null;
+  campaignState.editingVersion = null;
+  $("#campaign-form").reset();
+  $("#campaign-cadence").value = "1440";
+  $("#campaign-delay").value = "0";
+  syncCampaignCadence();
+  $("#campaign-context").value = "{}";
+  $("#campaign-evidence-list").replaceChildren();
+  addCampaignEvidence();
+  toggleCampaignResearchFields();
+  $("#campaign-create-submit").textContent = "Create campaign";
+  $("#campaign-cancel-edit").classList.add("is-hidden");
+  $("#campaign-form-heading").textContent = "Create campaign";
+  $("#campaign-form-note").textContent = "New campaigns start as drafts.";
+}
+
+function beginCampaignEdit(campaign) {
+  if (!["draft", "paused"].includes(campaign.status)) return;
+  campaignState.editingCampaignId = campaign.campaign_id;
+  campaignState.editingVersion = campaign.updated_at;
+  $("#campaign-name").value = campaign.name;
+  $("#campaign-objective").value = campaign.objective;
+  $("#campaign-mode").value = campaign.mode;
+  $("#campaign-cadence").value = String(campaign.cadence_minutes);
+  $("#campaign-delay").value = String(campaign.action_delay_minutes);
+  syncCampaignCadence();
+  $("#campaign-research-enabled").checked = campaign.research_before_plan;
+  $("#campaign-research-seeds").value = campaign.research_seed_urls.join("\n");
+  $("#campaign-context").value = JSON.stringify(campaign.context, null, 2);
+  $("#campaign-evidence-list").replaceChildren();
+  for (const item of campaign.evidence) addCampaignEvidence(item);
+  if (!campaign.evidence.length) addCampaignEvidence();
+  toggleCampaignResearchFields();
+  $("#campaign-create-submit").textContent = "Save changes";
+  $("#campaign-cancel-edit").classList.remove("is-hidden");
+  $("#campaign-form-heading").textContent = "Edit campaign";
+  $("#campaign-form-note").textContent =
+    "Edits require draft or paused status, no open jobs, and an unchanged campaign version.";
+  const form = $("#campaign-form");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  form.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  $("#campaign-name").focus({ preventScroll: true });
+}
+
+async function saveCampaignFromForm(event) {
   event.preventDefault();
   const button = $("#campaign-create-submit");
   let context;
@@ -135,22 +217,30 @@ async function createCampaignFromForm(event) {
     research_before_plan: researchBeforePlan,
   };
 
-  setBusy(button, true, "Creating…");
+  const editingId = campaignState.editingCampaignId;
+  if (editingId) {
+    const approved = await confirmConsumerAction({
+      title: "Save campaign changes?",
+      description: "Changes affect future planning only. Existing queued jobs will not be changed.",
+      details: JSON.stringify(payload, null, 2),
+      confirmLabel: "Save changes",
+    });
+    if (!approved) return;
+    payload.expected_updated_at = campaignState.editingVersion;
+  }
+  setBusy(button, true, editingId ? "Saving…" : "Creating…");
   try {
-    const campaign = await api("/api/campaigns", {
-      method: "POST",
+    const campaign = await api(editingId ? `/api/campaigns/${editingId}` : "/api/campaigns", {
+      method: editingId ? "PATCH" : "POST",
       body: JSON.stringify(payload),
     });
-    $("#campaign-form").reset();
-    $("#campaign-cadence").value = "1440";
-    $("#campaign-delay").value = "0";
-    $("#campaign-context").value = "{}";
-    $("#campaign-evidence-list").replaceChildren();
-    addCampaignEvidence();
+    resetCampaignEditor();
     await refreshCampaignWorkspace(false);
-    showFlash(`Campaign “${campaign.name}” created as a draft.`, "good");
+    showFlash(editingId ?
+      `Campaign “${campaign.name}” updated. Future plans use the new settings.` :
+      `Campaign “${campaign.name}” created as a draft.`, "good");
   } catch (error) {
-    showFlash(`Campaign creation failed: ${error.message}`, "error");
+    showFlash(`Campaign ${editingId ? "update" : "creation"} failed: ${error.message}`, "error");
   } finally {
     setBusy(button, false);
   }
@@ -249,7 +339,7 @@ function renderCampaignList() {
     const meta = element("div", "campaign-meta");
     [
       ["Mode", humanize(campaign.mode)],
-      ["Cadence", `${campaign.cadence_minutes} min`],
+      ["Cadence", readableCampaignCadence(campaign.cadence_minutes)],
       ["Next plan", formatDate(campaign.next_run_at)],
       ["Last plan", formatDate(campaign.last_run_at)],
       ["Evidence", String(campaign.evidence.length)],
@@ -262,6 +352,9 @@ function renderCampaignList() {
 
     const actions = element("div", "campaign-actions");
     if (["draft", "paused"].includes(campaign.status)) {
+      actions.append(campaignActionButton("Edit", "button-ghost", async () => {
+        beginCampaignEdit(campaign);
+      }));
       actions.append(campaignActionButton("Activate", "button-secondary", async () => {
         await api(`/api/campaigns/${campaign.campaign_id}/activate`, { method: "POST", body: "{}" });
         showFlash(`Campaign “${campaign.name}” activated.`, "good");
@@ -440,13 +533,17 @@ function initializeCampaignWorkspace() {
   if (campaignState.initialized) return;
   campaignState.initialized = true;
   addCampaignEvidence();
-  $("#campaign-form").addEventListener("submit", createCampaignFromForm);
+  $("#campaign-form").addEventListener("submit", saveCampaignFromForm);
+  $("#campaign-cancel-edit").addEventListener("click", resetCampaignEditor);
   $("#campaign-add-evidence").addEventListener("click", () => addCampaignEvidence());
+  $("#campaign-cadence-preset").addEventListener("change", applyCampaignCadencePreset);
+  $("#campaign-cadence").addEventListener("change", syncCampaignCadence);
   $("#campaign-research-enabled").addEventListener("change", toggleCampaignResearchFields);
   $("#refresh-campaigns").addEventListener("click", () => refreshCampaignWorkspace(true));
   const nav = $('.nav-item[data-view="campaigns"]');
   if (nav) nav.addEventListener("click", () => refreshCampaignWorkspace(true));
   toggleCampaignResearchFields();
+  syncCampaignCadence();
 }
 
 document.addEventListener("DOMContentLoaded", initializeCampaignWorkspace);

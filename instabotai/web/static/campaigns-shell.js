@@ -44,21 +44,21 @@
         </div>
         <div class="two-column campaign-layout">
           <article class="panel campaign-create-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Durable automation</p><h3>Create campaign</h3><p>Build recurring work from approved evidence or bounded public-web research.</p></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Durable automation</p><h3 id="campaign-form-heading">Create campaign</h3><p>Build recurring work from approved evidence or bounded public-web research.</p></div></div>
             <form id="campaign-form" class="form-stack">
               <label><span>Campaign name</span><input id="campaign-name" type="text" maxlength="160" required placeholder="Fall product launch"></label>
               <label><span>Business objective</span><textarea id="campaign-objective" rows="4" maxlength="2000" required placeholder="Publish evidence-grounded launch content and learn from measured outcomes."></textarea></label>
               <div class="campaign-form-grid">
                 <label><span>Authority mode</span><select id="campaign-mode"><option value="supervised" selected>Supervised</option><option value="policy_managed">Policy managed</option></select><small>Global write-approval policy remains authoritative in either mode.</small></label>
-                <label><span>Planning cadence (minutes)</span><input id="campaign-cadence" type="number" min="5" max="43200" value="1440" required></label>
-                <label><span>Action delay (minutes)</span><input id="campaign-delay" type="number" min="0" max="10080" value="0" required></label>
+                <label><span>Plan new content</span><select id="campaign-cadence-preset"><option value="1440" selected>Once a day</option><option value="720">Twice a day</option><option value="360">Every 6 hours</option><option value="10080">Once a week</option><option value="custom">Custom interval</option></select><small id="campaign-cadence-help">Plans once per day. Approval is still required before any write.</small></label><label id="campaign-cadence-custom-field" class="is-hidden"><span>Custom interval (minutes)</span><input id="campaign-cadence" type="number" min="5" max="43200" value="1440" required><small>Minimum 5 minutes, maximum 30 days.</small></label>
+                <label><span>Delay scheduled action (minutes)</span><input id="campaign-delay" type="number" min="0" max="10080" value="0" required><small>Optional wait after the plan is made. Does not bypass approval.</small></label>
                 <label class="campaign-check"><input id="campaign-research-enabled" type="checkbox"><span>Research public web before each plan</span></label>
               </div>
               <div id="campaign-research-fields" class="form-stack is-hidden"><label><span>Research seed URLs</span><textarea id="campaign-research-seeds" rows="5" placeholder="https://example.com/approved-market-report&#10;https://example.org/product-news"></textarea><small>One permitted HTTP/HTTPS URL per line.</small></label></div>
               <div class="field-header"><div><strong>Campaign evidence</strong><small>Manual evidence can be combined with research evidence.</small></div><button type="button" class="button button-ghost button-small" id="campaign-add-evidence">Add evidence</button></div>
               <div id="campaign-evidence-list" class="evidence-list"></div>
               <details class="advanced"><summary>Advanced context</summary><label><span>Bounded JSON context</span><textarea id="campaign-context" rows="6" spellcheck="false">{}</textarea></label></details>
-              <div class="form-actions"><span class="form-note">New campaigns start as drafts.</span><button class="button button-primary" type="submit" id="campaign-create-submit">Create campaign</button></div>
+              <div class="form-actions"><span class="form-note" id="campaign-form-note">New campaigns start as drafts.</span><button class="button button-ghost is-hidden" type="button" id="campaign-cancel-edit">Cancel editing</button><button class="button button-primary" type="submit" id="campaign-create-submit">Create campaign</button></div>
             </form>
           </article>
           <article class="panel">

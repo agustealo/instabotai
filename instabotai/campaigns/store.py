@@ -84,6 +84,98 @@ class CampaignStore:
             self._release(connection)
         return campaign
 
+    def update_campaign(
+        self,
+        campaign: Campaign,
+        *,
+        expected_updated_at: datetime,
+        now: datetime | None = None,
+    ) -> Campaign:
+        """Atomically edit an idle draft/paused campaign, rejecting stale form versions.
+
+        An open job or planning claim means this configuration might already be in use.
+        Edits never alter jobs, approvals, leases or provider execution state.
+        """
+
+        campaign_id = campaign.campaign_id
+        moment = self._utc(now)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM campaigns WHERE campaign_id = ?", (campaign_id,)
+            ).fetchone()
+            if row is None:
+                raise CampaignNotFoundError(f"campaign {campaign_id!r} was not found")
+
+            current = self._campaign_from_row(row)
+            if current.status not in {CampaignStatus.DRAFT, CampaignStatus.PAUSED}:
+                raise CampaignStateError("only draft or paused campaigns may be edited")
+            if self._utc(current.updated_at) != self._utc(expected_updated_at):
+                raise CampaignStateError(
+                    "campaign changed since it was opened; reload before editing"
+                )
+            if row["plan_claim_token"] is not None:
+                raise CampaignStateError("cannot edit while campaign planning is claimed")
+            placeholders = ",".join("?" for _ in self.OPEN_JOB_STATUSES)
+            open_jobs = connection.execute(
+                f"SELECT COUNT(*) FROM campaign_jobs WHERE campaign_id = ? "
+                f"AND status IN ({placeholders})",
+                (campaign_id, *self.OPEN_JOB_STATUSES),
+            ).fetchone()
+            if open_jobs is not None and int(open_jobs[0]) > 0:
+                raise CampaignStateError("resolve open campaign jobs before editing")
+
+            # Keep canonical lifecycle, creation time, run history, and queue untouched.
+            updated = Campaign.model_validate(
+                {
+                    **current.model_dump(mode="python"),
+                    "name": campaign.name,
+                    "objective": campaign.objective,
+                    "mode": campaign.mode,
+                    "cadence_minutes": campaign.cadence_minutes,
+                    "action_delay_minutes": campaign.action_delay_minutes,
+                    "evidence": campaign.evidence,
+                    "context": campaign.context,
+                    "research_seed_urls": campaign.research_seed_urls,
+                    "research_before_plan": campaign.research_before_plan,
+                    "updated_at": moment,
+                }
+            )
+            connection.execute(
+                """
+                UPDATE campaigns
+                SET name = ?, objective = ?, mode = ?, cadence_minutes = ?,
+                    action_delay_minutes = ?, evidence_json = ?, context_json = ?,
+                    research_seed_urls_json = ?, research_before_plan = ?, updated_at = ?
+                WHERE campaign_id = ?
+                """,
+                (
+                    updated.name,
+                    updated.objective,
+                    updated.mode.value,
+                    updated.cadence_minutes,
+                    updated.action_delay_minutes,
+                    json.dumps(
+                        [item.model_dump(mode="json") for item in updated.evidence],
+                        sort_keys=True,
+                        default=str,
+                    ),
+                    json.dumps(updated.context, sort_keys=True, default=str),
+                    json.dumps(updated.research_seed_urls),
+                    int(updated.research_before_plan),
+                    moment.isoformat(),
+                    campaign_id,
+                ),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            self._release(connection)
+        return self.get_campaign(campaign_id)
+
     def get_campaign(self, campaign_id: str) -> Campaign:
         connection = self._connect()
         try:

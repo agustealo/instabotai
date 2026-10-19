@@ -23,12 +23,15 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
         script = await client.get("/assets/campaigns.js")
         evidence = await client.get("/assets/trial-evidence.js")
         stylesheet = await client.get("/assets/campaigns.css")
+        setup_script = await client.get("/assets/setup.js")
+        setup_stylesheet = await client.get("/assets/setup.css")
 
     assert index.status_code == 200
     assert "AI Studio" in index.text
     assert loader.status_code == 200
     assert "/assets/app-core.js" in loader.text
     assert "/assets/campaigns-shell.js" in loader.text
+    assert "/assets/setup.js" in loader.text
     assert "__instabotaiDomReady" in loader.text
     assert core.status_code == 200
     assert "function initialize()" in core.text
@@ -46,6 +49,13 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
 
     assert script.status_code == 200
     assert "function canExecuteJob(job)" in script.text
+    assert "function beginCampaignEdit(campaign)" in script.text
+    assert "function readableCampaignCadence(minutes)" in script.text
+    assert "function syncCampaignCadence()" in script.text
+    assert 'id="campaign-cadence-preset"' in shell.text
+    assert "expected_updated_at" in script.text
+    assert 'method: editingId ? "PATCH" : "POST"' in script.text
+    assert 'id="campaign-cancel-edit"' in shell.text
     assert "if (!state.runtime || !state.runtime.policy) return false" in script.text
     assert "confirmJobChange(job, \"Execute\", true)" in script.text
     assert "confirmCampaignChange(campaign, \"Archive\", true)" in script.text
@@ -58,6 +68,15 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert "/evidence`" in evidence.text
     assert "application/json" in evidence.text
     assert "SHA-256 integrity metadata" in evidence.text
+
+    assert setup_script.status_code == 200
+    assert 'api("/api/consumer")' in setup_script.text
+    assert 'api("/api/runtime")' in setup_script.text
+    assert 'document.querySelector("#view-overview .hero [data-go]")' in setup_script.text
+    assert 'api(live ? "/api/readiness/probe" : "/api/readiness"' in setup_script.text
+    assert "Credentials are configured on your machine" in setup_script.text
+    assert setup_stylesheet.status_code == 200
+    assert ".setup-progress" in setup_stylesheet.text
 
     assert stylesheet.status_code == 200
     assert ".campaign-job-card" in stylesheet.text
@@ -76,6 +95,7 @@ def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
         "campaigns-shell.js",
         "campaigns.js",
         "trial-evidence.js",
+        "setup.js",
     ):
         result = subprocess.run(
             [node, "--check", str(static_dir / asset)],

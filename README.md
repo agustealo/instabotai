@@ -39,9 +39,10 @@ The consumer alpha console binds to `127.0.0.1:8765` by default and rejects all 
 
 The GUI uses the same canonical application/runtime authorities as the CLI. Shipped surfaces are:
 
-- **Overview**: secret-free runtime plus the canonical static/live consumer-trial readiness report.
+- **Get started**: guided first-run setup using canonical readiness, local configuration examples, live connection verification, scheduler health, and a handoff to the first campaign. The browser never stores provider credentials.
+- **Overview**: secret-free runtime and embedded scheduler health plus the canonical static/live consumer-trial readiness report.
 - **AI Studio**: live model probe, typed evidence, bounded context, planner + critic execution, scores, abstention, and pending-action inspection.
-- **Campaigns**: campaign creation/lifecycle, supervised or policy-managed mode, cadence/delay, optional research-before-plan, approval/rejection, controlled execution, retry/error/provider inspection, idempotency inspection, and explicit business-outcome feedback.
+- **Campaigns**: creation, safe draft/paused editing, human-readable scheduling presets (or custom intervals), optional research-before-plan, approval/rejection, controlled execution, retry/error/provider inspection, idempotency inspection, and explicit business-outcome feedback.
 - **Decision Audit**: durable `DecisionJournal` browsing and filtering.
 - **Adaptive Research**: Crawl4AI-backed objective/seed research with confidence, relevance, blocked/failed URLs, and hardened destination validation.
 - **Account**: read-only profile retrieval through the selected Instagram provider with secret-free readiness state.
@@ -57,6 +58,10 @@ CampaignRuntime
 ```
 
 Provider success is not automatically business success. AI learning receives campaign reward only after an explicit post-success outcome is recorded.
+
+**First-run path:** Open **Get started**, select the AI and Instagram provider examples, complete the local config file and restart the application, review static readiness, then explicitly run live AI and read-only Instagram checks. A draft can be created with trusted evidence or enabled research seeds. Editing is only accepted for a draft or paused campaign without open jobs or active planning; the backend rejects conflicting/stale edits and never rewrites existing actions. Activation, approval, and execution remain separate user-controlled operations.
+
+The Overview screenshot above documents an earlier verified packaged-console state, not the new Get started or editing layout. Updated captures should be taken only from a verified build.
 
 ## Architecture
 

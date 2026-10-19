@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -11,7 +12,7 @@ import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from instabotai import __version__
 from instabotai.application import InstabotApplication, PlanResult, RuntimeSnapshot
@@ -51,6 +52,21 @@ class ApplicationService(Protocol):
     def create_campaign(
         self,
         *,
+        name: str,
+        objective: str,
+        mode: CampaignMode,
+        cadence_minutes: int,
+        action_delay_minutes: int,
+        evidence: list[EvidenceItem],
+        context: dict[str, Any],
+        research_seed_urls: list[str],
+        research_before_plan: bool,
+    ) -> Campaign: ...
+    def update_campaign(
+        self,
+        campaign_id: str,
+        *,
+        expected_updated_at: datetime,
         name: str,
         objective: str,
         mode: CampaignMode,
@@ -113,6 +129,32 @@ class CampaignCreateRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     research_seed_urls: list[str] = Field(default_factory=list, max_length=20)
     research_before_plan: bool = False
+
+    @field_validator("name", "objective")
+    @classmethod
+    def validate_meaningful_text(cls, value: str, info: ValidationInfo) -> str:
+        normalized = value.strip()
+        minimum = 2 if info.field_name == "name" else 3
+        if len(normalized) < minimum:
+            raise ValueError(f"Enter at least {minimum} non-whitespace characters")
+        return normalized
+
+    @field_validator("research_seed_urls")
+    @classmethod
+    def normalize_seed_urls(cls, values: list[str]) -> list[str]:
+        return [value.strip() for value in values if value.strip()]
+
+    @model_validator(mode="after")
+    def validate_planning_inputs(self) -> CampaignCreateRequest:
+        if self.research_before_plan and not self.research_seed_urls:
+            raise ValueError("Research requires at least one seed URL")
+        if not self.evidence and not self.research_before_plan:
+            raise ValueError("Add campaign evidence or enable research with seed URLs")
+        return self
+
+
+class CampaignUpdateRequest(CampaignCreateRequest):
+    expected_updated_at: datetime
 
 
 class OutcomeRequest(BaseModel):
@@ -282,6 +324,24 @@ def create_app(
     @app.post("/api/campaigns", response_model=Campaign, status_code=201)
     async def create_campaign(payload: CampaignCreateRequest) -> Campaign:
         return application_service.create_campaign(
+            name=payload.name,
+            objective=payload.objective,
+            mode=payload.mode,
+            cadence_minutes=payload.cadence_minutes,
+            action_delay_minutes=payload.action_delay_minutes,
+            evidence=payload.evidence,
+            context=payload.context,
+            research_seed_urls=payload.research_seed_urls,
+            research_before_plan=payload.research_before_plan,
+        )
+
+    @app.patch("/api/campaigns/{campaign_id}", response_model=Campaign)
+    async def update_campaign(
+        campaign_id: str, payload: CampaignUpdateRequest
+    ) -> Campaign:
+        return application_service.update_campaign(
+            campaign_id,
+            expected_updated_at=payload.expected_updated_at,
             name=payload.name,
             objective=payload.objective,
             mode=payload.mode,

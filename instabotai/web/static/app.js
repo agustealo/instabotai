@@ -18,6 +18,11 @@
     campaigns.src = "/assets/campaigns-shell.js";
     campaigns.async = false;
     document.head.append(campaigns);
+
+    const setup = document.createElement("script");
+    setup.src = "/assets/setup.js";
+    setup.async = false;
+    document.head.append(setup);
   });
   document.head.append(core);
 })();
