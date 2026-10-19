@@ -112,7 +112,9 @@ class CampaignStore:
             if current.status not in {CampaignStatus.DRAFT, CampaignStatus.PAUSED}:
                 raise CampaignStateError("only draft or paused campaigns may be edited")
             if self._utc(current.updated_at) != self._utc(expected_updated_at):
-                raise CampaignStateError("campaign changed since it was opened; reload before editing")
+                raise CampaignStateError(
+                    "campaign changed since it was opened; reload before editing"
+                )
             if row["plan_claim_token"] is not None:
                 raise CampaignStateError("cannot edit while campaign planning is claimed")
             placeholders = ",".join("?" for _ in self.OPEN_JOB_STATUSES)

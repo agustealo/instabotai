@@ -141,7 +141,11 @@ class FakeProvider:
 def test_campaign_edit_is_atomic_and_rejects_stale_versions(tmp_path: Path) -> None:
     store = CampaignStore(str(tmp_path / "campaign-edit.sqlite3"))
     original = store.create_campaign(
-        Campaign(name="Original launch", objective="Publish an approved launch.", evidence=(evidence(),))
+        Campaign(
+            name="Original launch",
+            objective="Publish an approved launch.",
+            evidence=(evidence(),),
+        )
     )
     proposed = Campaign.model_validate(
         {**original.model_dump(mode="python"), "name": "Updated launch", "cadence_minutes": 720}
@@ -169,7 +173,11 @@ def test_campaign_edit_rejects_open_jobs_and_accepts_safe_paused_changes(
     path = tmp_path / "campaign-queue-edit.sqlite3"
     store = CampaignStore(str(path))
     original = store.create_campaign(
-        Campaign(name="Queue safety", objective="Publish an approved image.", evidence=(evidence(),))
+        Campaign(
+            name="Queue safety",
+            objective="Publish an approved image.",
+            evidence=(evidence(),),
+        )
     )
     active = store.set_campaign_status(original.campaign_id, CampaignStatus.ACTIVE)
     job = store.enqueue_job(
