@@ -12,7 +12,7 @@ import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
 from instabotai import __version__
 from instabotai.application import InstabotApplication, PlanResult, RuntimeSnapshot
@@ -132,11 +132,17 @@ class CampaignCreateRequest(BaseModel):
 
     @field_validator("name", "objective")
     @classmethod
-    def validate_meaningful_text(cls, value: str) -> str:
+    def validate_meaningful_text(cls, value: str, info: ValidationInfo) -> str:
         normalized = value.strip()
-        if not normalized:
-            raise ValueError("This field cannot be blank")
+        minimum = 2 if info.field_name == "name" else 3
+        if len(normalized) < minimum:
+            raise ValueError(f"Enter at least {minimum} non-whitespace characters")
         return normalized
+
+    @field_validator("research_seed_urls")
+    @classmethod
+    def normalize_seed_urls(cls, values: list[str]) -> list[str]:
+        return [value.strip() for value in values if value.strip()]
 
     @model_validator(mode="after")
     def validate_planning_inputs(self) -> CampaignCreateRequest:
