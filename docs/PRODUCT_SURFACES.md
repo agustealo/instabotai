@@ -59,6 +59,13 @@ The existing Overview screenshot predates this candidate UI work. It should be r
 
 ### Approval inbox and activity
 
+The approval view distinguishes **AI suggestion**, **human authorization**, **provider execution**, and **observed business impact**. Each pending job explains that Approve authorizes a future policy-governed Instagram write and does not publish immediately. The confirmation names the exact proposed action, campaign, source reason, provider, payload, confidence limitations and consequence. Accessible action names include both action type and campaign.
+
+The Execute button is a real write request, subject to the canonical execution policy. The UI now interprets the job returned by the backend, reporting **Succeeded**, **Failed**, **Retry wait**, or an explicitly nonfinal status rather than assuming that an HTTP 200 means Instagram delivery. Provider delivery is not a business outcome.
+
+The outcome form begins with **no default reward**. Users must deliberately choose a bounded score and provide an observation, with guidance not to guess. Learning still receives feedback only from the existing explicit outcome API. Automated browser tests simulate approval and execution responses but intercept provider writes; they are not evidence of authorized live Instagram delivery.
+
+
 The Campaigns workspace surfaces an **action inbox before the setup form**. Its stages are derived solely from canonical `CampaignJob.status` values, not frontend guesses:
 
 - **Needs approval:** `pending_approval` actions requiring a deliberate human review.
