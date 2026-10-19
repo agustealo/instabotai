@@ -160,6 +160,64 @@ function resetCampaignEditor() {
   $("#campaign-form-note").textContent = "New campaigns start as drafts.";
 }
 
+function suggestedCampaignName(objective) {
+  return objective.split(/[.!?\n]/)[0].trim().slice(0, 90);
+}
+
+async function stageCampaignDraft({ objective, evidence = [], seedUrls = [], sourceLabel }) {
+  if (typeof objective !== "string" || objective.trim().length < 3 ||
+      objective.trim().length > 2000 || !Array.isArray(evidence) || evidence.length > 100 ||
+      !Array.isArray(seedUrls) || seedUrls.length > 20) {
+    showFlash("The goal or evidence list cannot be transferred into a campaign.", "error");
+    return false;
+  }
+  if (seedUrls.some((url) => typeof url !== "string" || url.length > 500)) {
+    showFlash("Some research source URLs are too long to import.", "error");
+    return false;
+  }
+  if (evidence.some((item) => !item.evidence_id || !item.source || !item.content ||
+      item.evidence_id.length > 120 || item.source.length > 500 || item.content.length > 12000 ||
+      !Number.isFinite(Number(item.confidence)))) {
+    showFlash("Some selected evidence is invalid. Review its source, text, and confidence.", "error");
+    return false;
+  }
+  const form = $("#campaign-form");
+  if (!form || !campaignState.initialized) {
+    showFlash("The campaign editor is unavailable. Reload the page and try again.", "error");
+    return false;
+  }
+  const yes = await confirmConsumerAction({
+    title: "Prepare a supervised campaign draft?",
+    description: "This replaces unsaved text in the campaign form, not saved campaigns. " +
+      "No Instagram action will be planned, approved or executed.",
+    details: "From: " + sourceLabel + "\nGoal: " + objective.trim() +
+      "\nEvidence items: " + evidence.length +
+      "\nSource URLs: " + seedUrls.length +
+      "\nNext: review and explicitly create the draft.",
+    confirmLabel: "Prepare draft",
+  });
+  if (!yes) return false;
+  resetCampaignEditor();
+  $("#campaign-name").value = suggestedCampaignName(objective);
+  $("#campaign-objective").value = objective.trim();
+  $("#campaign-mode").value = "supervised";
+  $("#campaign-research-seeds").value = seedUrls.join("\n");
+  $("#campaign-evidence-list").replaceChildren();
+  for (const item of evidence) addCampaignEvidence(item);
+  if (!evidence.length) addCampaignEvidence();
+  $("#campaign-form-note").textContent = evidence.length
+    ? "Review imported unverified source text. Saving creates a draft only."
+    : "Add supporting evidence or enable research with valid seed URLs before saving.";
+  openView("campaigns");
+  form.scrollIntoView({
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    block: "start",
+  });
+  $("#campaign-name").focus({ preventScroll: true });
+  showFlash("Draft inputs prepared for your review. Nothing has been created or sent.", "good");
+  return true;
+}
+
 function beginCampaignEdit(campaign) {
   if (!["draft", "paused"].includes(campaign.status)) return;
   campaignState.editingCampaignId = campaign.campaign_id;

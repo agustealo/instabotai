@@ -72,6 +72,14 @@ The inbox filters by campaign, shows plain-language lifecycle explanations, and 
 
 The current API returns at most 200 jobs to this workspace, so the inbox is explicitly a **recent history**, not an exhaustive audit archive. The data is retrieved afresh when the user opens or refreshes Campaigns; there is no claim of real-time push updates. The UI does not replace the decision journal, evidence export, action ledger, backend approvals or execution policy.
 
+### Goal and evidence handoff to supervised campaigns
+
+From AI Studio, a business objective and complete user-supplied evidence can be prepared in the existing Campaigns form without running the planner. The model's proposed Instagram actions are **not** imported as executable work. An explicit confirmation is required before replacing unsaved campaign form inputs. Nothing is saved, activated, approved, or published during the transfer.
+
+Research now offers opt-in per-page selection and extracted-text inspection. Selected HTTP(S) sources are converted to the existing `EvidenceItem` fields: source URL, bounded page text (maximum 12,000 characters), generated evidence ID, and conservative confidence capped at 0.5. At most 20 sources can be transferred in one handoff. Research relevance is not verification of factual truth; the user must inspect each imported source. Seed URLs are prefilled for optional future use, but re-crawling remains off by default.
+
+The transfer exists only in the current browser form until **Create campaign** is deliberately submitted. It does not create a durable reusable research library or substitute for human verification, campaign review, approval, policy, or provider execution.
+
 ### AI Studio
 
 The AI Studio is an operator surface for the genuine intelligence system, not a decorative chat wrapper.

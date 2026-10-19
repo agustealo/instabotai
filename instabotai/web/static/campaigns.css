@@ -140,3 +140,6 @@ select {
 .campaign-preview-title { font-size: 13px; }
 .campaign-preview-message { margin: 4px 0; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
 .campaign-preview-context { margin: 0; color: var(--muted); font-size: 12px; }
+
+/* The goal-to-draft handoff stays inside the existing campaign editor. */
+#campaign-form-note { max-width: 350px; line-height: 1.5; }
