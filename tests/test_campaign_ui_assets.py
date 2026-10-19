@@ -326,3 +326,21 @@ def test_campaign_job_filters_use_collection_selector() -> None:
     script = (static / "campaigns.js").read_text(encoding="utf-8")
     assert '$$(".campaign-job-filters [data-job-filter]").forEach(' in script
     assert '  $(".campaign-job-filters [data-job-filter]").forEach(' not in script
+
+def test_approval_copy_and_result_classification_are_explicit() -> None:
+    path = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    script = (path / "campaigns.js").read_text(encoding="utf-8")
+    styles = (path / "campaigns.css").read_text(encoding="utf-8")
+    assert "function jobDecisionConsequence(label)" in script
+    assert "function jobExecutionFeedback(result)" in script
+    assert "Authorization is not publication" not in script
+    assert "Approval is not publication" in script
+    assert 'reward.placeholder = "Choose a score"' in script
+    assert "reward.value = \"0.5\"" not in script
+    assert "note.required = true" in script
+    assert "const feedback = jobExecutionFeedback(result)" in script
+    assert "Provider execution completed through" not in script
+    assert "aria-labelledby" in script
+    assert ".campaign-approval-consequence" in styles
+
+

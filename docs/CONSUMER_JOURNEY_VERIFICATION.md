@@ -84,7 +84,7 @@ Source-level tests and automated CI do **not** establish that a human can comple
 - Verify rollback/restart behavior, provider ambiguity, idempotency and retry safety,
   and no implicit authorization through AI output.
 
-## 6. Approval inbox and activity usability
+## 8. Approval inbox and activity usability
 
 - With no pending approvals, the default **Needs approval** stage must state clearly
   that nothing needs authorization, even if scheduled or historical jobs exist.
@@ -101,11 +101,29 @@ Source-level tests and automated CI do **not** establish that a human can comple
 - The list endpoint is limited to recent entries (up to 200 jobs). Check that the
   UI never presents this as an exhaustive audit history or a live streaming feed.
 
-## 7. UX, accessibility, and release gates
+## 9. Approval decisions, provider status and meaningful outcomes
+
+- Read the action-specific preview and confirm that every Approve, Reject, Execute and
+  Cancel dialog names the consequence, campaign, target, original AI reason, confidence
+  limitations, destination provider, schedule and complete action payload.
+- Inspect the same queue from keyboard and a screen reader. Every action must be identified
+  with its campaign and action type, not simply repeated "Approve" labels.
+- Escape and Go back must return without sending any approval or provider-write request.
+  Approve must permit a later policy-governed write, never describe itself as publication.
+- Intercept simulated successful, failed, retry-wait and nonterminal execute responses. The
+  UI must not claim Instagram delivery when the returned status is failed or retry-wait.
+- In Results & history, the business score starts blank. Browser validation must require
+  a deliberate 0–1 result and an observation note before submission, without guessing
+  a default outcome from a provider success.
+- Test focus and dynamic queue changes across mobile, desktop, and reduced-motion layouts.
+- Approval browser tests intercept provider-affecting API routes. Run authorized real-provider
+  trials and human WCAG/screen-reader review separately before consumer release.
+
+## 10. UX, accessibility, and release gates
 
 - Complete all journeys using keyboard only, including the confirmation dialog's Escape
   and Go back behavior; ensure visible focus and screen-reader labels.
-- Test desktop, tablet and 360px mobile layouts, including horizontal navigation,
+- Test desktop, tablet and 320px/375px mobile layouts, including the expandable menu,
   error messages, oversized goals, and long campaign names.
 - Test reduced-motion settings and normal-text contrast to WCAG AA targets.
 - Run Ruff, strict mypy, pytest, shipped JavaScript syntax, and canonical

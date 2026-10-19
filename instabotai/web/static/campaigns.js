@@ -369,12 +369,53 @@ function confirmCampaignChange(campaign, label, destructive = false) {
   });
 }
 
+function jobDecisionConsequence(label) {
+  const descriptions = {
+    Approve: "Authorizes this specific action for the execution queue. A worker may perform the Instagram write later after policy checks. Approval is not publication.",
+    Reject: "Rejects this proposed action; the rejected job cannot be executed.",
+    Execute: "Requests an Instagram write now. This may publish an image, reply to a comment, or change moderation. Policy is checked again; failure or retry is possible.",
+    Cancel: "Requests cancellation of a pending or scheduled job. A job already claimed by a worker may be too late to cancel.",
+  };
+  return descriptions[label] || "Review this operation and its effect before proceeding.";
+}
+
+function jobExecutionFeedback(result) {
+  if (result.status === "succeeded") {
+    return {kind: "good", message: "Instagram provider reported successful execution. Business impact still needs a separate recorded outcome."};
+  }
+  if (result.status === "retry_wait") {
+    return {kind: "error", message: "Instagram execution did not succeed. The job is waiting for a policy-controlled retry."};
+  }
+  if (result.status === "failed") {
+    return {kind: "error", message: "Instagram execution failed. Review the job error and provider details; nothing is confirmed delivered."};
+  }
+  return {kind: "info", message: "Execution request returned " + humanize(result.status) +
+    ". Check the activity list for an authoritative result."};
+}
+
 function confirmJobChange(job, label, destructive = false) {
   const campaign = campaignById(job.campaign_id);
+  const proposed = summarizeProposedAction(job.action);
+  const provider = state.runtime && state.runtime.instagram
+    ? state.runtime.instagram.provider : "Unknown";
   return () => confirmConsumerAction({
-    title: `${label} Instagram action?`,
-    description: "Review the account, scheduled time, target, and entire action payload before applying this change.",
-    details: `Campaign: ${campaign ? campaign.name : shortId(job.campaign_id)}\nInstagram provider: ${state.runtime ? state.runtime.instagram.provider : "Unknown"}\nAction: ${humanize(job.action.action_type)}\nJob status: ${humanize(job.status)}\nScheduled: ${formatDate(job.scheduled_for)}\nTarget: ${job.action.target_id || "Not specified"}\nPayload:\n${JSON.stringify(job.action.payload, null, 2)}`,
+    title: `${label}: ${proposed.title}?`,
+    description: jobDecisionConsequence(label),
+    details: [
+      "Campaign: " + (campaign ? campaign.name : shortId(job.campaign_id)),
+      "Instagram provider: " + provider,
+      "Proposed action: " + proposed.title,
+      "Proposed text: " + proposed.message,
+      proposed.context,
+      "Reason from AI: " + (job.action.reason || "Not supplied"),
+      "AI confidence: " + formatPercent(job.action.confidence) +
+        " (not proof of accuracy or permission)",
+      "Job status: " + humanize(job.status),
+      "Scheduled: " + formatDate(job.scheduled_for),
+      "Target: " + (job.action.target_id || "Not specified"),
+      "Full action payload:",
+      JSON.stringify(job.action.payload, null, 2),
+    ].join("\n"),
     confirmLabel: label,
     destructive,
   });
@@ -480,19 +521,28 @@ function renderJobOutcome(job) {
   reward.min = "0";
   reward.max = "1";
   reward.step = "0.05";
-  reward.value = "0.5";
+  reward.placeholder = "Choose a score";
   reward.required = true;
+  reward.setAttribute("aria-describedby", "outcome-score-help-" + job.job_id);
   rewardLabel.append(reward);
+  const help = element("span", "outcome-score-help",
+    "0 = no observed business benefit; 1 = fully achieved your goal. Do not guess. " +
+    "Record an observed result separately from provider delivery.");
+  help.id = "outcome-score-help-" + job.job_id;
+  rewardLabel.append(help);
   const noteLabel = element("label", "outcome-field");
   noteLabel.append(element("span", null, "What actually happened?"));
   const note = element("input", "outcome-note-input");
   note.type = "text";
   note.maxLength = 4000;
-  note.placeholder = "Observed engagement, leads, sales or another verifiable result";
+  note.required = true;
+  note.placeholder = "Describe an observed result and where you verified it";
   noteLabel.append(note);
   const submit = element("button", "button button-secondary button-small", "Record outcome");
   submit.type = "submit";
   form.append(rewardLabel, noteLabel, submit);
+  form.setAttribute("aria-label", "Record observed business result for " +
+    summarizeProposedAction(job.action).title);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     setBusy(submit, true, "Recording…");
@@ -678,17 +728,27 @@ function renderCampaignJobs() {
   const cards = visible.map((job) => {
     const campaign = campaignById(job.campaign_id);
     const card = element("article", "campaign-job-card");
+    if (job.status === "pending_approval") card.classList.add("needs-review");
+    const headingId = "job-heading-" + job.job_id;
+    card.setAttribute("aria-labelledby", headingId);
     const header = element("div", "campaign-card-header");
     const copy = element("div");
     copy.append(
       element("strong", "campaign-name", campaign ? campaign.name : shortId(job.campaign_id)),
       element("p", "campaign-objective", `${humanize(job.action.action_type)} · ${job.action.reason}`),
     );
+    const campaignHeading = copy.querySelector(".campaign-name");
+    campaignHeading.id = headingId;
     header.append(copy, pill(humanize(job.status), campaignStatusKind(job.status)));
     card.append(
       element("p", "campaign-job-explanation", jobStageCopy(job)),
       renderActionPreview(job.action),
     );
+    if (job.status === "pending_approval") {
+      card.append(element("p", "campaign-approval-consequence",
+        "Approval authorizes a future Instagram write, not just saving a draft. " +
+        "Review the proposed text, target, and full payload before deciding."));
+    }
 
     const meta = element("div", "campaign-meta job-meta");
     [
@@ -719,8 +779,11 @@ function renderCampaignJobs() {
     }
     if (canExecuteJob(job)) {
       actions.append(campaignActionButton("Execute", "button-primary", async () => {
-        await api(`/api/campaign-jobs/${job.job_id}/execute`, { method: "POST", body: "{}" });
-        showFlash("Provider execution completed through the canonical automation service.", "good");
+        const result = await api(`/api/campaign-jobs/${job.job_id}/execute`, {
+          method: "POST", body: "{}",
+        });
+        const feedback = jobExecutionFeedback(result);
+        showFlash(feedback.message, feedback.kind);
       }, confirmJobChange(job, "Execute", true)));
     }
     if (["pending_approval", "scheduled", "retry_wait"].includes(job.status)) {
@@ -730,6 +793,11 @@ function renderCampaignJobs() {
       }, confirmJobChange(job, "Cancel", true)));
     }
 
+    for (const button of actions.querySelectorAll("button")) {
+      button.setAttribute("aria-label", button.textContent + " " +
+        summarizeProposedAction(job.action).title + " in " +
+        (campaign ? campaign.name : shortId(job.campaign_id)));
+    }
     const details = element("details", "job-details");
     const summary = element("summary", null, "Inspect payload and provider state");
     const body = element("div", "job-detail-grid");
