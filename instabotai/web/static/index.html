@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -19,7 +20,10 @@
         </div>
       </div>
 
-      <nav class="nav" aria-label="Primary">
+      <button class="button button-secondary mobile-nav-toggle" id="mobile-nav-toggle"
+        type="button" aria-controls="primary-nav" aria-expanded="false"
+        aria-label="Open navigation">Menu <span aria-hidden="true">☰</span></button>
+      <nav class="nav" id="primary-nav" aria-label="Primary">
         <button class="nav-item is-active" data-view="overview">
           <span class="nav-icon">◫</span><span>Overview</span>
         </button>
@@ -46,11 +50,11 @@
       </div>
     </aside>
 
-    <main class="main">
+    <main class="main" id="main-content" tabindex="-1">
       <header class="topbar">
         <div>
           <p class="eyebrow">Adaptive intelligence runtime</p>
-          <h1 id="view-title">Overview</h1>
+          <h1 id="view-title" tabindex="-1">Overview</h1>
         </div>
         <div class="topbar-actions">
           <button class="button button-ghost" id="refresh-runtime">Refresh</button>
