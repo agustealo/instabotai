@@ -184,6 +184,7 @@ async function saveLibraryForm(event) {
       method:edit ? "PATCH" : "POST", body:JSON.stringify(payload),
     });
     resetEvidenceEditor();
+    libraryState.busy = false;
     await refreshEvidenceLibrary();
     showFlash(edit ? "Saved evidence updated." : "Evidence saved as Unverified.", "good");
   } catch (error) {
@@ -260,7 +261,7 @@ function renderLibraryEntries() {
       updateLibrarySelection();
     });
     label.append(check, libNode("strong", null, entry.title));
-    top.append(label, pill(humanize(entry.review_status),
+    top.append(label, pill(entry.review_status[0].toUpperCase() + entry.review_status.slice(1),
       entry.review_status === "reviewed" ? "good" :
       entry.review_status === "rejected" ? "bad" : "warn"));
     card.append(top, libNode("p", "library-source", entry.source));
@@ -342,7 +343,6 @@ async function loadLibraryTargets() {
 async function attachLibraryEvidence() {
   if (!libraryState.selected.size) return;
   const chosen = Array.from(libraryState.selected);
-  const all = libraryState.entries;
   // Fetch each entry from the backend to avoid using a stale filtered page.
   let entries;
   try {

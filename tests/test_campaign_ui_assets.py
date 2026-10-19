@@ -96,6 +96,7 @@ def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
         "campaigns.js",
         "trial-evidence.js",
         "setup.js",
+        "evidence-library.js",
     ):
         result = subprocess.run(
             [node, "--check", str(static_dir / asset)],
