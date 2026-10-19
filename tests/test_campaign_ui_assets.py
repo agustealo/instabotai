@@ -49,6 +49,10 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
 
     assert script.status_code == 200
     assert "function canExecuteJob(job)" in script.text
+    assert "function beginCampaignEdit(campaign)" in script.text
+    assert "expected_updated_at" in script.text
+    assert 'method: editingId ? "PATCH" : "POST"' in script.text
+    assert 'id="campaign-cancel-edit"' in shell.text
     assert "if (!state.runtime || !state.runtime.policy) return false" in script.text
     assert "confirmJobChange(job, \"Execute\", true)" in script.text
     assert "confirmCampaignChange(campaign, \"Archive\", true)" in script.text

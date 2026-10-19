@@ -145,7 +145,7 @@ function beginCampaignEdit(campaign) {
     "Edits require draft or paused status, no open jobs, and an unchanged campaign version.";
   const form = $("#campaign-form");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  form.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
+  form.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
   $("#campaign-name").focus({ preventScroll: true });
 }
 

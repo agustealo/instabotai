@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -267,3 +268,66 @@ def test_consumer_ui_bind_is_loopback_only() -> None:
             assert "loopback-only" in str(exc)
         else:
             raise AssertionError("remote bind should fail closed for the consumer alpha")
+
+
+async def test_campaign_edit_api_persists_and_rejects_stale_or_active_writes(
+    tmp_path: Path,
+) -> None:
+    active_settings = Settings(
+        _env_file=None,
+        state_db_path=str(tmp_path / "campaign-ui.sqlite3"),
+        ui_open_browser=False,
+    )
+    transport = httpx.ASGITransport(app=create_app(settings=active_settings))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as web:
+        created = await web.post(
+            "/api/campaigns",
+            json={
+                "name": "First launch",
+                "objective": "Publish an approved image.",
+                "evidence": [
+                    {
+                        "evidence_id": "approved-launch",
+                        "source": "reviewed brief",
+                        "content": "The product creative was approved.",
+                        "confidence": 1.0,
+                    }
+                ],
+            },
+        )
+        assert created.status_code == 201
+        campaign = created.json()
+        patch = {
+            "expected_updated_at": campaign["updated_at"],
+            "name": "Better launch",
+            "objective": campaign["objective"],
+            "mode": campaign["mode"],
+            "cadence_minutes": 720,
+            "action_delay_minutes": campaign["action_delay_minutes"],
+            "evidence": campaign["evidence"],
+            "context": campaign["context"],
+            "research_seed_urls": campaign["research_seed_urls"],
+            "research_before_plan": campaign["research_before_plan"],
+        }
+        url = f'/api/campaigns/{campaign["campaign_id"]}'
+        updated = await web.patch(url, json=patch)
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "Better launch"
+        assert updated.json()["cadence_minutes"] == 720
+        stale = await web.patch(url, json=patch)
+        assert stale.status_code == 409
+        assert stale.json()["code"] == "campaign_state_error"
+
+        invalid = await web.patch(url, json={**patch, "expected_updated_at": "invalid"})
+        assert invalid.status_code == 422
+
+        activated = await web.post(url + "/activate", json={})
+        assert activated.status_code == 200
+        active_patch = await web.patch(
+            url,
+            json={**patch, "expected_updated_at": activated.json()["updated_at"]},
+        )
+        assert active_patch.status_code == 409
+        listing = await web.get("/api/campaigns")
+        assert listing.status_code == 200
+        assert listing.json()[0]["name"] == "Better launch"

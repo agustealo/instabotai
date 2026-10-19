@@ -11,6 +11,7 @@ from instabotai.campaigns import (
     CampaignMode,
     CampaignRuntime,
     CampaignStatus,
+    CampaignStateError,
     CampaignStore,
     JobStatus,
 )
@@ -135,6 +136,63 @@ class FakeProvider:
 
     async def aclose(self) -> None:
         return None
+
+
+def test_campaign_edit_is_atomic_and_rejects_stale_versions(tmp_path: Path) -> None:
+    store = CampaignStore(str(tmp_path / "campaign-edit.sqlite3"))
+    original = store.create_campaign(
+        Campaign(name="Original launch", objective="Publish an approved launch.", evidence=(evidence(),))
+    )
+    proposed = Campaign.model_validate(
+        {**original.model_dump(mode="python"), "name": "Updated launch", "cadence_minutes": 720}
+    )
+    updated = store.update_campaign(proposed, expected_updated_at=original.updated_at)
+    assert updated.name == "Updated launch"
+    assert updated.cadence_minutes == 720
+    assert updated.campaign_id == original.campaign_id
+    assert updated.status == original.status
+    assert updated.created_at == original.created_at
+
+    with pytest.raises(CampaignStateError, match="changed since it was opened"):
+        store.update_campaign(proposed, expected_updated_at=original.updated_at)
+    assert store.get_campaign(original.campaign_id).name == "Updated launch"
+
+    active = store.set_campaign_status(original.campaign_id, CampaignStatus.ACTIVE)
+    with pytest.raises(CampaignStateError, match="only draft or paused"):
+        store.update_campaign(proposed, expected_updated_at=active.updated_at)
+    assert store.get_campaign(original.campaign_id).status is CampaignStatus.ACTIVE
+
+
+def test_campaign_edit_rejects_open_jobs_and_accepts_safe_paused_changes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "campaign-queue-edit.sqlite3"
+    store = CampaignStore(str(path))
+    original = store.create_campaign(
+        Campaign(name="Queue safety", objective="Publish an approved image.", evidence=(evidence(),))
+    )
+    active = store.set_campaign_status(original.campaign_id, CampaignStatus.ACTIVE)
+    job = store.enqueue_job(
+        campaign=active,
+        decision_id=decision().decision_id,
+        action=action("campaign-edit-reject-pending-001"),
+        settings=settings(path),
+        scheduled_for=datetime.now(UTC),
+    )
+    paused = store.set_campaign_status(original.campaign_id, CampaignStatus.PAUSED)
+    proposed = Campaign.model_validate(
+        {**paused.model_dump(mode="python"), "objective": "Publish revised approved creative."}
+    )
+    with pytest.raises(CampaignStateError, match="resolve open campaign jobs"):
+        store.update_campaign(proposed, expected_updated_at=paused.updated_at)
+    assert store.get_campaign(original.campaign_id).objective == paused.objective
+    assert store.get_job(job.job_id).status is JobStatus.PENDING_APPROVAL
+
+    store.cancel_job(job.job_id)
+    saved = store.update_campaign(proposed, expected_updated_at=paused.updated_at)
+    assert saved.objective == "Publish revised approved creative."
+    assert saved.status is CampaignStatus.PAUSED
+    assert store.get_job(job.job_id).status is JobStatus.CANCELLED
 
 
 def test_campaign_store_uses_leases_and_blocks_parallel_open_work(tmp_path: Path) -> None:
