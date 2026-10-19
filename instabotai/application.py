@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from typing import Any
 
 from pydantic import BaseModel
@@ -261,6 +263,39 @@ class InstabotApplication:
         runtime = CampaignRuntime(self.settings)
         try:
             return runtime.create_campaign(
+                name=name,
+                objective=objective,
+                mode=mode,
+                cadence_minutes=cadence_minutes,
+                action_delay_minutes=action_delay_minutes,
+                evidence=evidence,
+                context=context,
+                research_seed_urls=research_seed_urls,
+                research_before_plan=research_before_plan,
+            )
+        finally:
+            runtime.close()
+
+    def update_campaign(
+        self,
+        campaign_id: str,
+        *,
+        expected_updated_at: datetime,
+        name: str,
+        objective: str,
+        mode: CampaignMode,
+        cadence_minutes: int,
+        action_delay_minutes: int,
+        evidence: list[EvidenceItem],
+        context: dict[str, Any],
+        research_seed_urls: list[str],
+        research_before_plan: bool,
+    ) -> Campaign:
+        runtime = CampaignRuntime(self.settings)
+        try:
+            return runtime.update_campaign(
+                campaign_id,
+                expected_updated_at=expected_updated_at,
                 name=name,
                 objective=objective,
                 mode=mode,

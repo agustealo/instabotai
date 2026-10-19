@@ -72,6 +72,38 @@ class CampaignRuntime:
         )
         return self.store.create_campaign(campaign)
 
+    def update_campaign(
+        self,
+        campaign_id: str,
+        *,
+        expected_updated_at: datetime,
+        name: str,
+        objective: str,
+        mode: CampaignMode,
+        cadence_minutes: int,
+        action_delay_minutes: int,
+        evidence: list[EvidenceItem],
+        context: dict[str, Any],
+        research_seed_urls: list[str],
+        research_before_plan: bool,
+    ) -> Campaign:
+        current = self.store.get_campaign(campaign_id)
+        proposed = Campaign.model_validate(
+            {
+                **current.model_dump(mode="python"),
+                "name": name.strip(),
+                "objective": objective.strip(),
+                "mode": mode,
+                "cadence_minutes": cadence_minutes,
+                "action_delay_minutes": action_delay_minutes,
+                "evidence": tuple(evidence),
+                "context": context,
+                "research_seed_urls": tuple(url.strip() for url in research_seed_urls if url.strip()),
+                "research_before_plan": research_before_plan,
+            }
+        )
+        return self.store.update_campaign(proposed, expected_updated_at=expected_updated_at)
+
     def list_campaigns(self, limit: int = 100) -> tuple[Campaign, ...]:
         return self.store.list_campaigns(limit)
 

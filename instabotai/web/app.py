@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import logging
 from pathlib import Path
 from typing import Any, Protocol
@@ -51,6 +52,21 @@ class ApplicationService(Protocol):
     def create_campaign(
         self,
         *,
+        name: str,
+        objective: str,
+        mode: CampaignMode,
+        cadence_minutes: int,
+        action_delay_minutes: int,
+        evidence: list[EvidenceItem],
+        context: dict[str, Any],
+        research_seed_urls: list[str],
+        research_before_plan: bool,
+    ) -> Campaign: ...
+    def update_campaign(
+        self,
+        campaign_id: str,
+        *,
+        expected_updated_at: datetime,
         name: str,
         objective: str,
         mode: CampaignMode,
@@ -113,6 +129,10 @@ class CampaignCreateRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     research_seed_urls: list[str] = Field(default_factory=list, max_length=20)
     research_before_plan: bool = False
+
+
+class CampaignUpdateRequest(CampaignCreateRequest):
+    expected_updated_at: datetime
 
 
 class OutcomeRequest(BaseModel):
@@ -282,6 +302,24 @@ def create_app(
     @app.post("/api/campaigns", response_model=Campaign, status_code=201)
     async def create_campaign(payload: CampaignCreateRequest) -> Campaign:
         return application_service.create_campaign(
+            name=payload.name,
+            objective=payload.objective,
+            mode=payload.mode,
+            cadence_minutes=payload.cadence_minutes,
+            action_delay_minutes=payload.action_delay_minutes,
+            evidence=payload.evidence,
+            context=payload.context,
+            research_seed_urls=payload.research_seed_urls,
+            research_before_plan=payload.research_before_plan,
+        )
+
+    @app.patch("/api/campaigns/{campaign_id}", response_model=Campaign)
+    async def update_campaign(
+        campaign_id: str, payload: CampaignUpdateRequest
+    ) -> Campaign:
+        return application_service.update_campaign(
+            campaign_id,
+            expected_updated_at=payload.expected_updated_at,
             name=payload.name,
             objective=payload.objective,
             mode=payload.mode,
