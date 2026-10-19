@@ -23,12 +23,15 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
         script = await client.get("/assets/campaigns.js")
         evidence = await client.get("/assets/trial-evidence.js")
         stylesheet = await client.get("/assets/campaigns.css")
+        setup_script = await client.get("/assets/setup.js")
+        setup_stylesheet = await client.get("/assets/setup.css")
 
     assert index.status_code == 200
     assert "AI Studio" in index.text
     assert loader.status_code == 200
     assert "/assets/app-core.js" in loader.text
     assert "/assets/campaigns-shell.js" in loader.text
+    assert "/assets/setup.js" in loader.text
     assert "__instabotaiDomReady" in loader.text
     assert core.status_code == 200
     assert "function initialize()" in core.text
@@ -59,6 +62,13 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert "application/json" in evidence.text
     assert "SHA-256 integrity metadata" in evidence.text
 
+    assert setup_script.status_code == 200
+    assert 'api("/api/consumer")' in setup_script.text
+    assert 'api("/api/readiness/probe"' in setup_script.text
+    assert "Credentials are configured on your machine" in setup_script.text
+    assert setup_stylesheet.status_code == 200
+    assert ".setup-progress" in setup_stylesheet.text
+
     assert stylesheet.status_code == 200
     assert ".campaign-job-card" in stylesheet.text
     assert ".outcome-form" in stylesheet.text
@@ -76,6 +86,7 @@ def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
         "campaigns-shell.js",
         "campaigns.js",
         "trial-evidence.js",
+        "setup.js",
     ):
         result = subprocess.run(
             [node, "--check", str(static_dir / asset)],
