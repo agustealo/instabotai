@@ -325,4 +325,4 @@ def test_campaign_job_filters_use_collection_selector() -> None:
     static = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
     script = (static / "campaigns.js").read_text(encoding="utf-8")
     assert '$$(".campaign-job-filters [data-job-filter]").forEach(' in script
-    assert '$(".campaign-job-filters [data-job-filter]").forEach(' not in script
+    assert '  $(".campaign-job-filters [data-job-filter]").forEach(' not in script
