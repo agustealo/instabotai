@@ -57,6 +57,21 @@ Users can create supervised drafts, choose common cadence presets or a bounded c
 
 The existing Overview screenshot predates this candidate UI work. It should be recaptured after verification and must not be presented as proof that the new journey has passed human usability review.
 
+### Approval inbox and activity
+
+The Campaigns workspace surfaces an **action inbox before the setup form**. Its stages are derived solely from canonical `CampaignJob.status` values, not frontend guesses:
+
+- **Needs approval:** `pending_approval` actions requiring a deliberate human review.
+- **Scheduled:** `scheduled`, `retry_wait`, and `leased` actions.
+- **Results & history:** `succeeded`, `failed`, `rejected`, and `cancelled` actions.
+- **All:** every job returned by the existing canonical list endpoint.
+
+The inbox filters by campaign, shows plain-language lifecycle explanations, and previews action-specific content for image publishing, comment replies, and hide/unhide moderation. This preview uses backend action data rendered as text rather than untrusted HTML. The existing full-payload disclosure and confirmation dialog remain available for each user-authorized write.
+
+**A provider success is not a business outcome.** Successfully executed work with no recorded reward is counted separately as *Awaiting outcome*, and explicit recording remains required to feed learning. Failed actions are separately visible.
+
+The current API returns at most 200 jobs to this workspace, so the inbox is explicitly a **recent history**, not an exhaustive audit archive. The data is retrieved afresh when the user opens or refreshes Campaigns; there is no claim of real-time push updates. The UI does not replace the decision journal, evidence export, action ledger, backend approvals or execution policy.
+
 ### AI Studio
 
 The AI Studio is an operator surface for the genuine intelligence system, not a decorative chat wrapper.
