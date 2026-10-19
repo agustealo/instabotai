@@ -130,3 +130,13 @@ select {
 .outcome-field { display: grid; gap: 5px; min-width: 0; }
 .outcome-field span { font-size: 12px; color: var(--muted); }
 .outcome-field input { min-width: 0; width: 100%; }
+
+.campaign-action-preview {
+  display: grid; gap: 4px; margin-top: 12px; padding: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-soft); overflow-wrap: anywhere;
+}
+.campaign-preview-label { font-size: 11px; color: var(--muted); }
+.campaign-preview-title { font-size: 13px; }
+.campaign-preview-message { margin: 4px 0; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+.campaign-preview-context { margin: 0; color: var(--muted); font-size: 12px; }

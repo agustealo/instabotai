@@ -559,6 +559,50 @@ function selectCampaignJobFilter(stage) {
   renderCampaignJobs();
 }
 
+function summarizeProposedAction(action) {
+  const payload = action.payload || {};
+  const target = String(action.target_id || payload.comment_id || "Not specified");
+  const asText = (value) => typeof value === "string" && value.trim() ? value.trim() : "Not supplied";
+  if (action.action_type === "publish_image") {
+    return {
+      title: "Publish an image",
+      message: asText(payload.caption),
+      context: "Image URL: " + asText(payload.image_url),
+    };
+  }
+  if (action.action_type === "reply_to_comment") {
+    return {
+      title: "Reply to an Instagram comment",
+      message: asText(payload.message),
+      context: "Comment: " + target,
+    };
+  }
+  if (action.action_type === "hide_comment") {
+    return {
+      title: payload.hide === false ? "Unhide an Instagram comment" : "Hide an Instagram comment",
+      message: "Moderation target: " + target,
+      context: "Check the full action payload before approving.",
+    };
+  }
+  return {
+    title: "Review proposed Instagram action",
+    message: String(action.reason || "Reason not supplied"),
+    context: "Check the full action payload before approving.",
+  };
+}
+
+function renderActionPreview(action) {
+  const proposed = summarizeProposedAction(action);
+  const box = element("div", "campaign-action-preview");
+  box.append(
+    element("span", "campaign-preview-label", "Proposed Instagram action"),
+    element("strong", "campaign-preview-title", proposed.title),
+    element("p", "campaign-preview-message", proposed.message),
+    element("p", "campaign-preview-context", proposed.context),
+  );
+  return box;
+}
+
 function renderCampaignJobs() {
   const target = $("#campaign-job-list");
   const visible = visibleCampaignJobs();
@@ -583,7 +627,10 @@ function renderCampaignJobs() {
       element("p", "campaign-objective", `${humanize(job.action.action_type)} · ${job.action.reason}`),
     );
     header.append(copy, pill(humanize(job.status), campaignStatusKind(job.status)));
-    card.append(element("p", "campaign-job-explanation", jobStageCopy(job)));
+    card.append(
+      element("p", "campaign-job-explanation", jobStageCopy(job)),
+      renderActionPreview(job.action),
+    );
 
     const meta = element("div", "campaign-meta job-meta");
     [

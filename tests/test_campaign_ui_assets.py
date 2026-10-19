@@ -105,6 +105,7 @@ def test_shipped_consumer_javascript_parses_when_node_is_available() -> None:
         )
         assert result.returncode == 0, f"{asset}: {result.stderr}"
 
+
 def test_campaign_inbox_stage_filtering_without_backend_mock_when_node_available() -> None:
     """The inbox groups actual backend job status values, not invented lifecycle flags."""
 
@@ -154,6 +155,9 @@ check("history", 2);
 check("all", 6);
 assert.match(jobStageCopy(jobs[0]), /decision is required/i);
 assert.match(jobStageCopy(jobs[4]), /business impact has not been recorded/i);
+assert.equal(summarizeProposedAction({action_type: "publish_image", payload: {caption: "Launch"}}).message, "Launch");
+assert.equal(summarizeProposedAction({action_type: "reply_to_comment", target_id: "123", payload: {message: "Thanks!"}}).context, "Comment: 123");
+assert.match(summarizeProposedAction({action_type: "hide_comment", payload: {hide: false}}).title, /Unhide/);
 `);
 verify({addEventListener() {}}, jobs, assert);
 """
@@ -178,5 +182,6 @@ def test_campaign_inbox_has_accessible_controls_and_stages() -> None:
     assert "function visibleCampaignJobs()" in script
     assert "function renderCampaignControls()" in script
     assert "function jobStageCopy(job)" in script
+    assert "function renderActionPreview(action)" in script
     assert "Business result score (0 to 1)" in script
     assert ".campaign-job-summary" in styles
