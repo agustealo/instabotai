@@ -203,7 +203,8 @@ def test_research_selection_persists_as_unverified_without_external_network(
     ).click()
     expect(page.locator("#view-library")).to_have_class("view is-active")
     expect(page.locator(".library-entry").filter(has_text="Autumn trends report")).to_be_visible()
-    expect(page.locator(".library-entry").filter(has_text="Autumn trends report")).to_contain_text("Unverified")
+    saved_report = page.locator(".library-entry").filter(has_text="Autumn trends report")
+    expect(saved_report).to_contain_text("Unverified")
 
 
 def test_stale_browser_review_is_rejected_without_overwriting(
@@ -229,7 +230,8 @@ def test_stale_browser_review_is_rejected_without_overwriting(
         for page in (a, b):
             page.goto(consumer_url, wait_until="domcontentloaded")
             open_library(page)
-            expect(page.locator(".library-entry").filter(has_text="Concurrency proof")).to_be_visible()
+            concurrent_entry = page.locator(".library-entry").filter(has_text="Concurrency proof")
+            expect(concurrent_entry).to_be_visible()
 
         a.locator(".library-entry").filter(has_text="Concurrency proof").get_by_role(
             "button", name="Mark reviewed", exact=True,
