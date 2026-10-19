@@ -44,7 +44,7 @@
         </div>
         <div class="two-column campaign-layout">
           <article class="panel campaign-create-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Durable automation</p><h3>Create campaign</h3><p>Build recurring work from approved evidence or bounded public-web research.</p></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Durable automation</p><h3 id="campaign-form-heading">Create campaign</h3><p>Build recurring work from approved evidence or bounded public-web research.</p></div></div>
             <form id="campaign-form" class="form-stack">
               <label><span>Campaign name</span><input id="campaign-name" type="text" maxlength="160" required placeholder="Fall product launch"></label>
               <label><span>Business objective</span><textarea id="campaign-objective" rows="4" maxlength="2000" required placeholder="Publish evidence-grounded launch content and learn from measured outcomes."></textarea></label>
@@ -58,7 +58,7 @@
               <div class="field-header"><div><strong>Campaign evidence</strong><small>Manual evidence can be combined with research evidence.</small></div><button type="button" class="button button-ghost button-small" id="campaign-add-evidence">Add evidence</button></div>
               <div id="campaign-evidence-list" class="evidence-list"></div>
               <details class="advanced"><summary>Advanced context</summary><label><span>Bounded JSON context</span><textarea id="campaign-context" rows="6" spellcheck="false">{}</textarea></label></details>
-              <div class="form-actions"><span class="form-note">New campaigns start as drafts.</span><button class="button button-primary" type="submit" id="campaign-create-submit">Create campaign</button></div>
+              <div class="form-actions"><span class="form-note" id="campaign-form-note">New campaigns start as drafts.</span><button class="button button-ghost is-hidden" type="button" id="campaign-cancel-edit">Cancel editing</button><button class="button button-primary" type="submit" id="campaign-create-submit">Create campaign</button></div>
             </form>
           </article>
           <article class="panel">
