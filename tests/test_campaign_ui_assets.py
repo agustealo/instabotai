@@ -133,7 +133,8 @@ const jobs = [
   ["g", "rejected", "campaign-b"],
   ["h", "cancelled", "campaign-b"],
 ].map(([job_id, status, campaign_id], idx) => ({
-  job_id, status, campaign_id, created_at: "2026-10-19T10:00:00Z",
+  job_id, status, campaign_id, outcome_reward: null,
+  created_at: "2026-10-19T10:00:00Z",
   updated_at: "2026-10-19T10:" + String(idx).padStart(2, "0") + ":00Z",
 }));
 const assert = require("node:assert/strict");
