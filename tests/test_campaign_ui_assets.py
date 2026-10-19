@@ -32,6 +32,10 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert "__instabotaiDomReady" in loader.text
     assert core.status_code == 200
     assert "function initialize()" in core.text
+    assert "function confirmConsumerAction(" in core.text
+    assert 'state.worker = await api("/api/worker")' in core.text
+    assert 'kind !== "error"' in core.text
+    assert "Array.isArray(body.detail)" in core.text
 
     assert shell.status_code == 200
     assert 'button.dataset.view = "campaigns"' in shell.text
@@ -41,6 +45,10 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert "export its secret-free evidence" in shell.text
 
     assert script.status_code == 200
+    assert "function canExecuteJob(job)" in script.text
+    assert "if (!state.runtime || !state.runtime.policy) return false" in script.text
+    assert "confirmJobChange(job, \"Execute\", true)" in script.text
+    assert "confirmCampaignChange(campaign, \"Archive\", true)" in script.text
     assert "pending_approval" in script.text
     assert "/api/campaign-jobs/" in script.text
     assert "Business outcome recorded" in script.text
