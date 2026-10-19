@@ -3,6 +3,7 @@
 const state = {
   runtime: null,
   readiness: null,
+  worker: null,
   lastDecisionPayload: null,
   decisions: [],
   evidenceCounter: 0,
@@ -56,9 +57,21 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok) {
-    const message = body && body.message ? body.message : `HTTP ${response.status}`;
-    const error = new Error(message);
-    error.code = body && body.code ? body.code : "request_failed";
+    let message = body && typeof body.message === "string" ? body.message : "";
+    if (!message && body && typeof body.detail === "string") {
+      message = body.detail;
+    }
+    if (!message && body && Array.isArray(body.detail)) {
+      message = body.detail
+        .slice(0, 5)
+        .map((issue) => {
+          const field = Array.isArray(issue.loc) ? issue.loc.filter((item) => item !== "body").join(".") : "request";
+          return `${field || "request"}: ${issue.msg || "invalid value"}`;
+        })
+        .join("; ");
+    }
+    const error = new Error(message || `HTTP ${response.status}`);
+    error.code = body && body.code ? body.code : response.status === 422 ? "validation_error" : "request_failed";
     error.status = response.status;
     throw error;
   }
@@ -67,13 +80,69 @@ async function api(path, options = {}) {
 
 function showFlash(message, kind = "info") {
   const flash = $("#flash");
-  flash.textContent = message;
-  flash.className = `flash is-visible ${kind === "error" ? "is-error" : kind === "good" ? "is-good" : ""}`;
   window.clearTimeout(showFlash.timer);
-  showFlash.timer = window.setTimeout(() => {
+  flash.className = `flash is-visible ${kind === "error" ? "is-error" : kind === "good" ? "is-good" : ""}`;
+  flash.setAttribute("role", kind === "error" ? "alert" : "status");
+  flash.replaceChildren(element("span", "flash-message", message));
+  const dismiss = element("button", "button button-ghost button-small", "Dismiss");
+  dismiss.type = "button";
+  dismiss.setAttribute("aria-label", "Dismiss notification");
+  dismiss.addEventListener("click", () => {
+    window.clearTimeout(showFlash.timer);
     flash.className = "flash";
-    flash.textContent = "";
-  }, 6000);
+    flash.replaceChildren();
+  });
+  flash.append(dismiss);
+  if (kind !== "error") {
+    showFlash.timer = window.setTimeout(() => {
+      flash.className = "flash";
+      flash.replaceChildren();
+    }, 6000);
+  }
+}
+
+/**
+ * Review an account-changing operation before dispatching the canonical API write.
+ * A native dialog is used so Escape, keyboard focus, and cancel behave predictably.
+ */
+function confirmConsumerAction({ title, description, details, confirmLabel, destructive = false }) {
+  return new Promise((resolve) => {
+    const dialog = element("dialog", "confirmation-dialog");
+    const form = element("form", "confirmation-form");
+    form.method = "dialog";
+    const heading = element("h2", null, title);
+    heading.id = "confirmation-heading";
+    dialog.setAttribute("aria-labelledby", heading.id);
+    form.append(heading, element("p", "confirmation-description", description));
+    if (details) {
+      const preview = element("pre", "code-block confirmation-preview", details);
+      preview.setAttribute("aria-label", "Action payload and affected account");
+      form.append(preview);
+    }
+    const actions = element("div", "confirmation-actions");
+    const cancel = element("button", "button button-secondary", "Go back");
+    cancel.type = "submit";
+    cancel.value = "cancel";
+    const proceed = element("button", `button ${destructive ? "button-danger" : "button-primary"}`, confirmLabel);
+    proceed.type = "submit";
+    proceed.value = "confirm";
+    actions.append(cancel, proceed);
+    form.append(actions);
+    dialog.append(form);
+    document.body.append(dialog);
+    if (typeof dialog.showModal !== "function") {
+      const approved = window.confirm(`${title}\n${description}\n\n${details || ""}`);
+      dialog.remove();
+      resolve(approved);
+      return;
+    }
+    dialog.addEventListener("close", () => {
+      const approved = dialog.returnValue === "confirm";
+      dialog.remove();
+      resolve(approved);
+    }, { once: true });
+    dialog.showModal();
+  });
 }
 
 function setBusy(button, busy, busyLabel) {
@@ -106,7 +175,7 @@ function readinessItem(check) {
   const states = {
     pass: ["Ready", "good"],
     warn: ["Optional", "warn"],
-    fail: ["Blocked", "warn"],
+    fail: ["Blocked", "bad"],
     skip: ["Not run", "info"],
   };
   const [label, kind] = states[check.status] || [String(check.status), "info"];
@@ -177,10 +246,20 @@ async function loadRuntime() {
   try {
     const runtime = await api("/api/runtime");
     state.runtime = runtime;
+    try {
+      state.worker = await api("/api/worker");
+    } catch {
+      state.worker = null;
+    }
     renderRuntime(runtime);
     await loadReadiness(false);
-    $("#health-dot").className = "status-dot good";
-    $("#health-label").textContent = "Runtime online";
+    const schedulerRunning = state.worker && state.worker.running;
+    $("#health-dot").className = schedulerRunning ? "status-dot good" : "status-dot bad";
+    $("#health-label").textContent = schedulerRunning
+      ? "Runtime and scheduler online"
+      : state.worker && state.worker.enabled
+        ? "Runtime online; scheduler stopped"
+        : "Runtime online; scheduler status unknown";
   } catch (error) {
     $("#health-dot").className = "status-dot bad";
     $("#health-label").textContent = "Runtime unavailable";
@@ -211,9 +290,11 @@ function renderRuntime(runtime) {
       runtime.policy.write_approval_required ? "approval required" : "approval optional",
     ),
     metricCard(
-      "Research budget",
-      `${runtime.research.max_pages} pages`,
-      `${formatPercent(runtime.research.confidence_threshold)} confidence target`,
+      "Campaign scheduler",
+      state.worker && state.worker.running ? "Running" : "Not running",
+      state.worker
+        ? state.worker.last_error || (state.worker.last_tick_at ? `Last tick ${formatDate(state.worker.last_tick_at)}` : "No completed tick yet")
+        : "Scheduler status unavailable",
     ),
   );
 

@@ -297,3 +297,39 @@ input:focus, textarea:focus { border-color: rgba(139, 92, 246, 0.65); box-shadow
   .inline-actions { width: 100%; }
   .search-input { width: 100%; }
 }
+
+/* Persistent operational alerts and review-before-write confirmation. */
+.flash.is-visible { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.flash-message { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.confirmation-dialog {
+  width: min(640px, calc(100vw - 28px));
+  max-height: min(88vh, 780px);
+  overflow: auto;
+  margin: auto;
+  padding: 24px;
+  background: var(--panel-strong);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.confirmation-dialog::backdrop { background: rgba(0, 0, 0, 0.76); }
+.confirmation-form { display: grid; gap: 16px; }
+.confirmation-form h2 { margin: 0; font-size: 21px; line-height: 1.3; }
+.confirmation-description { color: var(--muted); margin: 0; line-height: 1.5; }
+.confirmation-preview { max-height: 40vh; white-space: pre-wrap; }
+.confirmation-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.button-danger { color: #fff; background: #9f1239; border-color: #be123c; }
+.button-danger:hover { background: #be123c; }
+select:focus-visible, .nav-item:focus-visible, .button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .view.is-active, .skeleton::after { animation: none; }
+  .button, input, textarea, .nav-item { transition: none; }
+}
+@media (max-width: 560px) {
+  .confirmation-dialog { padding: 17px; }
+  .confirmation-actions { flex-direction: column-reverse; }
+}

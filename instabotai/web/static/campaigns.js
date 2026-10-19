@@ -190,10 +190,11 @@ function renderCampaignMetrics() {
   );
 }
 
-function campaignActionButton(label, className, handler) {
+function campaignActionButton(label, className, handler, confirmation = null) {
   const button = element("button", `button button-small ${className}`, label);
   button.type = "button";
   button.addEventListener("click", async () => {
+    if (confirmation && !(await confirmation())) return;
     setBusy(button, true, `${label}…`);
     try {
       await handler();
@@ -205,6 +206,27 @@ function campaignActionButton(label, className, handler) {
     }
   });
   return button;
+}
+
+function confirmCampaignChange(campaign, label, destructive = false) {
+  return () => confirmConsumerAction({
+    title: `${label} campaign?`,
+    description: `This will change the state of “${campaign.name}”. Confirm the intended effect before continuing.`,
+    details: `Campaign: ${campaign.name}\nObjective: ${campaign.objective}\nCurrent status: ${humanize(campaign.status)}`,
+    confirmLabel: label,
+    destructive,
+  });
+}
+
+function confirmJobChange(job, label, destructive = false) {
+  const campaign = campaignById(job.campaign_id);
+  return () => confirmConsumerAction({
+    title: `${label} Instagram action?`,
+    description: "Review the account, scheduled time, target, and entire action payload before applying this change.",
+    details: `Campaign: ${campaign ? campaign.name : shortId(job.campaign_id)}\nInstagram provider: ${state.runtime ? state.runtime.instagram.provider : "Unknown"}\nAction: ${humanize(job.action.action_type)}\nJob status: ${humanize(job.status)}\nScheduled: ${formatDate(job.scheduled_for)}\nTarget: ${job.action.target_id || "Not specified"}\nPayload:\n${JSON.stringify(job.action.payload, null, 2)}`,
+    confirmLabel: label,
+    destructive,
+  });
 }
 
 function renderCampaignList() {
@@ -243,7 +265,7 @@ function renderCampaignList() {
       actions.append(campaignActionButton("Activate", "button-secondary", async () => {
         await api(`/api/campaigns/${campaign.campaign_id}/activate`, { method: "POST", body: "{}" });
         showFlash(`Campaign “${campaign.name}” activated.`, "good");
-      }));
+      }, confirmCampaignChange(campaign, "Activate")));
     }
     if (campaign.status === "active") {
       actions.append(campaignActionButton("Pause", "button-secondary", async () => {
@@ -265,7 +287,7 @@ function renderCampaignList() {
       actions.append(campaignActionButton("Archive", "button-ghost", async () => {
         await api(`/api/campaigns/${campaign.campaign_id}/archive`, { method: "POST", body: "{}" });
         showFlash(`Campaign “${campaign.name}” archived.`, "good");
-      }));
+      }, confirmCampaignChange(campaign, "Archive", true)));
     }
 
     card.append(header, meta, actions);
@@ -275,9 +297,9 @@ function renderCampaignList() {
 }
 
 function canExecuteJob(job) {
-  if (!state.runtime) return true;
-  if (job.action.approval !== "approved" && state.runtime.policy.write_approval_required) return false;
-  return ["scheduled", "retry_wait"].includes(job.status);
+  if (!state.runtime || !state.runtime.policy) return false;
+  if (!["scheduled", "retry_wait"].includes(job.status)) return false;
+  return job.action.approval === "approved" || !state.runtime.policy.write_approval_required;
 }
 
 function renderJobOutcome(job) {
@@ -370,24 +392,24 @@ function renderCampaignJobs() {
         campaignActionButton("Approve", "button-primary", async () => {
           await api(`/api/campaign-jobs/${job.job_id}/approve`, { method: "POST", body: "{}" });
           showFlash("Campaign action approved and moved to the execution queue.", "good");
-        }),
+        }, confirmJobChange(job, "Approve")),
         campaignActionButton("Reject", "button-secondary", async () => {
           await api(`/api/campaign-jobs/${job.job_id}/reject`, { method: "POST", body: "{}" });
           showFlash("Campaign action rejected.", "good");
-        }),
+        }, confirmJobChange(job, "Reject", true)),
       );
     }
     if (canExecuteJob(job)) {
       actions.append(campaignActionButton("Execute", "button-primary", async () => {
         await api(`/api/campaign-jobs/${job.job_id}/execute`, { method: "POST", body: "{}" });
         showFlash("Provider execution completed through the canonical automation service.", "good");
-      }));
+      }, confirmJobChange(job, "Execute", true)));
     }
     if (["pending_approval", "scheduled", "retry_wait"].includes(job.status)) {
       actions.append(campaignActionButton("Cancel", "button-ghost", async () => {
         await api(`/api/campaign-jobs/${job.job_id}/cancel`, { method: "POST", body: "{}" });
         showFlash("Campaign job cancelled.", "good");
-      }));
+      }, confirmJobChange(job, "Cancel", true)));
     }
 
     const details = element("details", "job-details");
