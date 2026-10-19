@@ -143,3 +143,18 @@ select {
 
 /* The goal-to-draft handoff stays inside the existing campaign editor. */
 #campaign-form-note { max-width: 350px; line-height: 1.5; }
+
+/* Review actions have distinct consequences, separate from neutral job metadata. */
+.campaign-job-card.needs-review { border-color: rgba(251, 191, 36, 0.5); }
+.campaign-approval-consequence {
+  padding: 12px 14px; margin: 12px 0 0; line-height: 1.6;
+  border-left: 3px solid var(--warn); border-radius: 8px;
+  background: rgba(251, 191, 36, 0.065); color: #fde68a; font-size: 13px;
+}
+.outcome-score-help { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.outcome-form .outcome-field input:focus-visible { outline-offset: 3px; }
+@media (max-width: 720px) {
+  .campaign-job-card { padding: 14px; }
+  .campaign-action-preview { padding: 11px; }
+  .campaign-job-card .campaign-actions .button { min-height: 44px; }
+}
