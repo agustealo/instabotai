@@ -374,3 +374,158 @@ def test_library_failure_is_announced_and_manual_refresh_recovers(page: Page) ->
     page.locator("#library-refresh").click()
     expect(page.locator("#library-status")).to_contain_text("Showing the current page")
     expect(page.locator("#library-list")).to_be_visible()
+
+
+def test_approval_decision_consequences_and_result_reporting_without_provider_writes(
+    page: Page,
+) -> None:
+    """Exercise the real dialog and action inbox, while replacing provider-affecting routes."""
+
+    proposal = {
+        "job_id": "11" * 16,
+        "campaign_id": "22" * 16,
+        "decision_id": "33" * 16,
+        "status": "pending_approval",
+        "scheduled_for": "2026-10-19T16:00:00+00:00",
+        "attempt_count": 0,
+        "max_attempts": 3,
+        "last_error": None,
+        "provider_result": None,
+        "outcome_reward": None,
+        "outcome_note": "",
+        "created_at": "2026-10-19T14:00:00+00:00",
+        "updated_at": "2026-10-19T14:00:00+00:00",
+        "action": {
+            "action_type": "publish_image",
+            "reason": "Approved product brief suggests announcing launch.",
+            "confidence": 0.82,
+            "target_id": None,
+            "idempotency_key": "review-test-action-001",
+            "approval": "pending",
+            "payload": {
+                "image_url": "https://cdn.example.org/product.jpg",
+                "caption": "Our verified seasonal product launch.",
+            },
+        },
+    }
+    job = dict(proposal)
+    posted: list[str] = []
+
+    def handle_jobs(route: object) -> None:
+        route.fulfill(
+            content_type="application/json",
+            body=json.dumps([job]),
+        )
+
+    def handle_approve(route: object) -> None:
+        posted.append("approve")
+        job["status"] = "scheduled"
+        job["action"] = {**job["action"], "approval": "approved"}
+        route.fulfill(content_type="application/json", body=json.dumps(job))
+
+    page.route("**/api/campaign-jobs?limit=200", handle_jobs)
+    page.route("**/api/campaign-jobs/" + job["job_id"] + "/approve", handle_approve)
+    page.locator('.nav-item[data-view="campaigns"]').click()
+    card = page.locator(".campaign-job-card")
+    expect(card).to_have_count(1)
+    expect(card).to_contain_text("Approval authorizes a future Instagram write")
+    expect(card).to_have_attribute("aria-labelledby", "job-heading-" + job["job_id"])
+    approve = card.get_by_role("button", name="Approve Publish an image", exact=False)
+    approve.click()
+    dialog = page.locator("dialog[open]")
+    expect(dialog).to_contain_text("Authorizes this specific action")
+    expect(dialog).to_contain_text("Our verified seasonal product launch.")
+    expect(dialog).to_contain_text("not proof of accuracy or permission")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    assert posted == [], "Cancelling the dialog must make no backend authorization call"
+
+    approve.click()
+    dialog = page.locator("dialog[open]")
+    dialog.get_by_role("button", name="Approve", exact=True).click()
+    expect(page.locator("#flash")).to_contain_text(
+        "approved and moved to the execution queue"
+    )
+    assert posted == ["approve"]
+
+    page.locator('[data-job-filter="scheduled"]').click()
+    expect(page.locator(".campaign-job-card")).to_have_count(1)
+    page.evaluate(
+        "state.runtime = {policy: {write_approval_required: true}, "
+        "instagram: {provider: 'Mock'}}; renderCampaignJobs();"
+    )
+    execute = page.get_by_role(
+        "button", name="Execute Publish an image", exact=False,
+    )
+    posted_result: list[str] = []
+
+    def handle_execute(route: object) -> None:
+        posted_result.append("execute")
+        route.fulfill(
+            content_type="application/json",
+            body=json.dumps({**job, "status": "failed", "last_error": "Provider unavailable"}),
+        )
+
+    page.route("**/api/campaign-jobs/" + job["job_id"] + "/execute", handle_execute)
+    execute.click()
+    dialog = page.locator("dialog[open]")
+    expect(dialog).to_contain_text("Requests an Instagram write now")
+    dialog.get_by_role("button", name="Execute", exact=True).click()
+    expect(page.locator("#flash")).to_contain_text("Instagram execution failed")
+    assert posted_result == ["execute"], "Only the intercepted mock received a write"
+
+
+def test_business_outcome_requires_explicit_score_and_observation(page: Page) -> None:
+    """A provider success cannot silently become a guessed business result."""
+
+    job = {
+        "job_id": "44" * 16, "campaign_id": "55" * 16, "decision_id": "66" * 16,
+        "status": "succeeded", "scheduled_for": "2026-10-19T16:00:00+00:00",
+        "attempt_count": 1, "max_attempts": 3, "outcome_reward": None,
+        "outcome_note": "", "last_error": None, "provider_result": "mock-media-123",
+        "created_at": "2026-10-19T14:00:00+00:00",
+        "updated_at": "2026-10-19T14:10:00+00:00",
+        "action": {
+            "action_type": "publish_image", "reason": "Launch approved.",
+            "confidence": 0.9, "approval": "approved", "target_id": None,
+            "idempotency_key": "review-test-action-002",
+            "payload": {
+                "image_url": "https://cdn.example.org/product.jpg",
+                "caption": "Our new collection.",
+            },
+        },
+    }
+    written: list[dict[str, object]] = []
+    page.route(
+        "**/api/campaign-jobs?limit=200",
+        lambda route: route.fulfill(
+            content_type="application/json", body=json.dumps([job]),
+        ),
+    )
+    page.route(
+        "**/api/campaign-jobs/" + job["job_id"] + "/outcome",
+        lambda route: (
+            written.append(route.request.post_data_json),
+            route.fulfill(content_type="application/json", body=json.dumps(job)),
+        ),
+    )
+    page.locator('.nav-item[data-view="campaigns"]').click()
+    page.locator('[data-job-filter="history"]').click()
+    form = page.locator(".outcome-form")
+    expect(form).to_be_visible()
+    score = form.locator(".outcome-reward")
+    note = form.locator(".outcome-note-input")
+    expect(score).to_be_empty()
+    expect(score).to_have_attribute("required", "")
+    expect(note).to_have_attribute("required", "")
+    expect(form).to_contain_text("Do not guess")
+    form.get_by_role("button", name="Record outcome").click()
+    assert written == [], "No default reward or empty observation may be submitted"
+    score.fill("0.2")
+    note.fill("Two verified inbound enquiries from the launch post.")
+    form.get_by_role("button", name="Record outcome").click()
+    expect(page.locator("#flash")).to_contain_text("Business outcome recorded")
+    assert written == [{
+        "reward": 0.2,
+        "note": "Two verified inbound enquiries from the launch post.",
+    }]
