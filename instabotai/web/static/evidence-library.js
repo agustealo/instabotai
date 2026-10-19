@@ -418,8 +418,14 @@ async function refreshEvidenceLibrary() {
     await loadLibraryTargets();
     libraryState.loaded = true;
   } catch (error) {
+    libraryState.entries = [];
+    libraryState.selected.clear();
+    const list = document.querySelector("#library-list");
+    list.replaceChildren(libNode("div", "empty-state",
+      "Saved evidence could not be loaded. Check local storage and select Refresh to retry."));
     document.querySelector("#library-status").textContent =
       "Could not load saved evidence: " + error.message;
+    updateLibrarySelection();
     showFlash("Evidence Library unavailable: " + error.message, "error");
   } finally {
     libraryState.busy = false;

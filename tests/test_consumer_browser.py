@@ -8,6 +8,7 @@ These tests are automation evidence, not a substitute for a human acceptance tri
 from __future__ import annotations
 
 import json
+import re
 import socket
 import threading
 import time
@@ -106,7 +107,7 @@ def save_source(page: Page, title: str) -> None:
     page.locator("#library-content").fill("Autumn product imagery and dates were approved.")
     page.locator("#library-tags").fill("product, launch")
     page.locator("#library-form button[type='submit']").click()
-    expect(page.locator(".library-entry")).to_contain_text(title)
+    expect(page.locator(".library-entry").filter(has_text=title)).to_be_visible()
 
 
 def test_saved_evidence_review_and_supervised_campaign_creation(
@@ -292,7 +293,9 @@ def test_viewports_have_accessible_navigation_without_page_overflow(
                 expect(menu).to_have_attribute("aria-expanded", "true")
             item = page.locator(f'.nav-item[data-view="{destination}"]')
             item.click()
-            expect(page.locator("#view-" + destination)).to_have_class("view is-active")
+            expect(page.locator("#view-" + destination)).to_have_class(
+                re.compile(r"\bis-active\b"),
+            )
             expect(item).to_have_attribute("aria-current", "page")
             expect(page.locator("#view-title")).to_be_focused()
             if mobile:
@@ -335,7 +338,8 @@ def test_mobile_keyboard_navigation_skip_link_escape_and_dialog_focus(
         menu.click()
         page.locator('.nav-item[data-view="library"]').click()
         save_source(page, "Keyboard focus review source")
-        review = page.get_by_role("button", name="Mark reviewed", exact=True)
+        entry = page.locator(".library-entry").filter(has_text="Keyboard focus review source")
+        review = entry.get_by_role("button", name="Mark reviewed", exact=True)
         review.focus()
         page.keyboard.press("Enter")
         dialog = page.locator("dialog[open]")
@@ -345,7 +349,7 @@ def test_mobile_keyboard_navigation_skip_link_escape_and_dialog_focus(
         ), "Dialog must receive keyboard focus"
         page.keyboard.press("Escape")
         expect(dialog).to_have_count(0)
-        expect(page.locator(".library-entry")).to_contain_text("Unverified")
+        expect(entry).to_contain_text("Unverified")
         expect(page.locator("#library-form")).to_be_visible()
     finally:
         context.close()
