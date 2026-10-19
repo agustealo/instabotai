@@ -102,8 +102,7 @@ async def test_embedded_worker_runs_and_reports_health() -> None:
     service = WorkerOnlyService()
     app = create_app(settings=settings(), service=service)
 
-    await app.router.startup()
-    try:
+    async with app.router.lifespan_context(app):
         for _ in range(50):
             if service.ticks:
                 break
@@ -118,7 +117,59 @@ async def test_embedded_worker_runs_and_reports_health() -> None:
         assert payload["running"] is True
         assert payload["last_planned_campaign_id"] == "campaign-1"
         assert payload["last_tick_at"] is not None
-    finally:
-        await app.router.shutdown()
 
     assert app.state.consumer_worker_status.running is False
+
+
+class SensitiveFailureService:
+    def __init__(self, *, raise_error: bool) -> None:
+        self.ticks = 0
+        self.raise_error = raise_error
+
+    async def worker_tick(self) -> WorkerTick:
+        self.ticks += 1
+        if self.raise_error:
+            raise RuntimeError("Authorization: Bearer not-for-browser")
+        return WorkerTick(
+            planning_error="private token leaked by upstream",
+            execution_error="provider password leaked by upstream",
+        )
+
+
+async def test_embedded_worker_health_redacts_tick_errors() -> None:
+    service = SensitiveFailureService(raise_error=False)
+    app = create_app(settings=settings(), service=service)
+
+    async with app.router.lifespan_context(app):
+        for _ in range(50):
+            if service.ticks:
+                break
+            await asyncio.sleep(0.001)
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/api/worker")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "Campaign planning failed" in payload["last_error"]
+        assert "Campaign execution failed" in payload["last_error"]
+        assert "token" not in payload["last_error"]
+        assert "password" not in payload["last_error"]
+
+
+async def test_embedded_worker_health_redacts_exception_messages() -> None:
+    service = SensitiveFailureService(raise_error=True)
+    app = create_app(settings=settings(), service=service)
+
+    async with app.router.lifespan_context(app):
+        for _ in range(50):
+            if service.ticks:
+                break
+            await asyncio.sleep(0.001)
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/api/worker")
+        assert response.status_code == 200
+        assert "RuntimeError" in response.json()["last_error"]
+        assert "not-for-browser" not in response.text

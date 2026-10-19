@@ -31,7 +31,7 @@ Launch the GUI:
 instabotai ui
 ```
 
-The console binds to `127.0.0.1:8765` by default. A non-loopback bind is rejected unless `INSTABOTAI_UI_ALLOW_REMOTE=true` is deliberately configured.
+The consumer alpha console binds to `127.0.0.1:8765` by default and rejects all non-loopback binds until authenticated remote access exists.
 
 ![InstabotAI consumer console Overview](docs/screenshots/consumer-console-overview.png)
 
@@ -233,11 +233,7 @@ export INSTABOTAI_UI_PORT='8765'
 export INSTABOTAI_UI_OPEN_BROWSER='true'
 ```
 
-Non-loopback binds require explicit opt-in:
-
-```bash
-export INSTABOTAI_UI_ALLOW_REMOTE='true'
-```
+The consumer alpha is loopback-only. The legacy `INSTABOTAI_UI_ALLOW_REMOTE` setting cannot override this protection.
 
 ### AI
 
@@ -276,7 +272,7 @@ Install `.[private]` before using that backend. Authorized research-mode credent
 
 ## Consumer/API security
 
-The local console adds browser-specific protections including loopback-only binding by default, explicit remote-bind opt-in, self-only CSP, frame denial, `nosniff`, no-referrer policy, restrictive permissions policy, no-store API responses, bounded AI/research/campaign concurrency, structured secret-free errors, and no unexpected stack traces returned to the browser.
+The local console adds browser-specific protections including loopback-only binding (no unauthenticated remote opt-in), self-only CSP, frame denial, `nosniff`, no-referrer policy, restrictive permissions policy, no-store API responses, bounded AI/research/campaign concurrency, structured secret-free errors, and no unexpected stack traces returned to the browser.
 
 See [SECURITY.md](SECURITY.md) for the network, credential, write-retry, and idempotency boundaries.
 
