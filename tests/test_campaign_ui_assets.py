@@ -288,7 +288,13 @@ const stage = new Function(
 })().catch((err)=>{console.error(err);process.exitCode=1;});
 """
     result = subprocess.run(
-        [node, "-e", harness, str(CONSUMER_ASSETS / "app-core.js"), str(CONSUMER_ASSETS / "campaigns.js")],
+        [
+            node,
+            "-e",
+            harness,
+            str(CONSUMER_ASSETS / "app-core.js"),
+            str(CONSUMER_ASSETS / "campaigns.js"),
+        ],
         capture_output=True,
         text=True,
         check=False,
