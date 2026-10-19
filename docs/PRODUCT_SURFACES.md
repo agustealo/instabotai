@@ -47,6 +47,16 @@ Overview exposes:
 - static/live `ConsumerTrialReadiness` status;
 - a **Run live checks** control for genuine AI + read-only Instagram probes.
 
+### Guided first run
+
+The **Get started** workspace is assembled from real `/api/readiness`, `/api/consumer`, `/api/worker`, `/api/runtime` and campaign-list data. No UI-only success flags may substitute for those authorities. If required readiness checks fail and the user has no campaigns, the workspace appears automatically.
+
+Provider selectors generate examples for the effective local configuration file. They are **not** live provider switches and never capture credentials in the browser. After local configuration and a runtime restart, the user may explicitly run read-only live model/Instagram checks. A green static check does not imply live connectivity.
+
+Users can create supervised drafts, choose common cadence presets or a bounded custom interval, and edit an existing draft or paused campaign. Editing is rejected by canonical SQLite state when another update won the race, a planning lease is held, or any open job exists. The edit does not mutate previous jobs, provider receipts, or outcome history. Active campaigns must be paused first; archived campaigns are immutable.
+
+The existing Overview screenshot predates this candidate UI work. It should be recaptured after verification and must not be presented as proof that the new journey has passed human usability review.
+
 ### AI Studio
 
 The AI Studio is an operator surface for the genuine intelligence system, not a decorative chat wrapper.
