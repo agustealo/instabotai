@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
-from contextlib import suppress
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -114,13 +115,17 @@ async def _run_worker(
                 status.last_execution_status = (
                     tick.execution_status.value if tick.execution_status is not None else None
                 )
-                errors = [value for value in (tick.planning_error, tick.execution_error) if value]
+                errors = []
+                if tick.planning_error:
+                    errors.append("Campaign planning failed; see local logs")
+                if tick.execution_error:
+                    errors.append("Campaign execution failed; see local logs")
                 status.last_error = " | ".join(errors) if errors else None
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover - defensive worker survival boundary
                 status.last_tick_at = datetime.now(UTC)
-                status.last_error = f"{type(exc).__name__}: {exc}"
+                status.last_error = f"Scheduler error ({type(exc).__name__}); see local logs"
                 LOGGER.exception("Embedded campaign worker tick failed")
             await asyncio.sleep(poll_seconds)
     finally:
@@ -215,8 +220,20 @@ def create_app(
         with suppress(asyncio.CancelledError):
             await task
 
-    app.add_event_handler("startup", start_embedded_worker)
-    app.add_event_handler("shutdown", stop_embedded_worker)
+    original_lifespan = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def consumer_lifespan(lifespan_app: Any) -> AsyncIterator[None]:
+        """Preserve the canonical lifespan while owning the GUI scheduler."""
+
+        async with original_lifespan(lifespan_app):
+            await start_embedded_worker()
+            try:
+                yield
+            finally:
+                await stop_embedded_worker()
+
+    app.router.lifespan_context = consumer_lifespan
 
     @app.get("/api/worker", response_model=ConsumerWorkerStatus, include_in_schema=False)
     async def consumer_worker_status() -> ConsumerWorkerStatus:

@@ -26,7 +26,7 @@ The real console capture is reproducible. Run the manual **Docs Visual Capture**
 
 **Launch:** `instabotai ui`  
 **Default bind:** `127.0.0.1:8765`  
-**Remote bind:** rejected unless `INSTABOTAI_UI_ALLOW_REMOTE=true` is deliberately enabled.  
+**Remote bind:** rejected in the consumer alpha, even when the legacy `INSTABOTAI_UI_ALLOW_REMOTE` setting is enabled.  
 **Write authority:** policy-mediated only. Browser requests continue through durable campaign state, approval, policy, quota, idempotency, ledger, and provider authorities.
 
 ### Overview
@@ -163,8 +163,7 @@ Daily quota checking and reservation occur atomically in SQLite and include in-f
 
 The consumer API adds browser-specific safeguards on top of application authorities:
 
-- loopback-only bind by default;
-- explicit opt-in for non-loopback binds;
+- loopback-only bind, rejecting unauthenticated remote access even with legacy opt-in;
 - self-only CSP for scripts/styles/connectivity;
 - `X-Frame-Options: DENY`;
 - `X-Content-Type-Options: nosniff`;
