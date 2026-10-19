@@ -633,8 +633,18 @@ async function submitResearch(event) {
   }
 }
 
+function isSafeResearchSourceUrl(value) {
+  if (typeof value !== "string" || value.length > 500) return false;
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === "https:" || parsed.protocol === "http:") && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function researchPageToDraftEvidence(page, index, reportConfidence) {
-  if (!page || typeof page.url !== "string" || page.url.length > 500 ||
+  if (!page || !isSafeResearchSourceUrl(page.url) ||
       typeof page.markdown !== "string" || !page.markdown.trim()) {
     throw new Error("Selected research source is missing a usable URL or extracted text.");
   }
@@ -693,10 +703,14 @@ function renderResearch(report) {
       element("strong", null, page.title || "Untitled page"),
       pill(formatPercent(page.relevance), page.relevance >= 0.5 ? "good" : "info"),
     );
-    const link = element("a", null, page.url);
-    link.href = page.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
+    const link = isSafeResearchSourceUrl(page.url)
+      ? element("a", null, page.url)
+      : element("span", null, "Research source URL unavailable or invalid");
+    if (link.tagName.toLowerCase() === "a") {
+      link.href = page.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
     const excerpt = page.markdown.length > 700 ? `${page.markdown.slice(0, 700)}…` : page.markdown;
     card.append(header, link, element("p", null, excerpt || "No extracted text."));
     root.append(card);
@@ -705,7 +719,8 @@ function renderResearch(report) {
   if (report.blocked_urls.length) root.append(section("Blocked by research policy", listNode(report.blocked_urls)));
   if (report.failed_urls.length) root.append(section("Failed URLs", listNode(report.failed_urls)));
 
-  const eligible = report.pages.filter((page) => page.markdown && page.markdown.trim());
+  const eligible = report.pages.filter((page) =>
+    isSafeResearchSourceUrl(page.url) && page.markdown && page.markdown.trim());
   if (eligible.length) {
     const handoff = element("div", "research-handoff");
     const heading = element("strong", null, "Create a campaign from selected sources");
@@ -718,8 +733,9 @@ function renderResearch(report) {
     const note = element("span", "form-note", "No sources selected");
     const update = () => {
       const count = root.querySelectorAll(".research-pick:checked").length;
-      button.disabled = count === 0;
-      note.textContent = count ? count + " source(s) selected for review" : "No sources selected";
+      button.disabled = count === 0 || count > 20;
+      note.textContent = count > 20 ? "Select at most 20 sources" :
+        count ? count + " source(s) selected for review" : "No sources selected";
     };
     button.addEventListener("click", async () => {
       const picked = Array.from(root.querySelectorAll(".research-pick:checked"))
@@ -753,7 +769,8 @@ function renderResearch(report) {
       const check = element("input", "research-pick");
       check.type = "checkbox";
       check.dataset.pageIndex = String(index);
-      check.disabled = !page.markdown || !page.markdown.trim();
+      check.disabled = !isSafeResearchSourceUrl(page.url) ||
+        !page.markdown || !page.markdown.trim();
       check.addEventListener("change", update);
       label.append(check, element("span", null, "Include as draft evidence"));
       card.append(label);

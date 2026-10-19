@@ -166,8 +166,13 @@ function suggestedCampaignName(objective) {
 
 async function stageCampaignDraft({ objective, evidence = [], seedUrls = [], sourceLabel }) {
   if (typeof objective !== "string" || objective.trim().length < 3 ||
-      objective.trim().length > 2000 || !Array.isArray(evidence) || evidence.length > 100) {
+      objective.trim().length > 2000 || !Array.isArray(evidence) || evidence.length > 100 ||
+      !Array.isArray(seedUrls) || seedUrls.length > 20) {
     showFlash("The goal or evidence list cannot be transferred into a campaign.", "error");
+    return false;
+  }
+  if (seedUrls.some((url) => typeof url !== "string" || url.length > 500)) {
+    showFlash("Some research source URLs are too long to import.", "error");
     return false;
   }
   if (evidence.some((item) => !item.evidence_id || !item.source || !item.content ||
