@@ -633,6 +633,45 @@ async function submitResearch(event) {
   }
 }
 
+function researchPageToDraftEvidence(page, index, reportConfidence) {
+  if (!page || typeof page.url !== "string" || page.url.length > 500 ||
+      typeof page.markdown !== "string" || !page.markdown.trim()) {
+    throw new Error("Selected research source is missing a usable URL or extracted text.");
+  }
+  // Relevance and model confidence are not verification of a factual claim.
+  const bounded = (value) => Number.isFinite(Number(value))
+    ? Math.max(0, Math.min(1, Number(value))) : 0;
+  return {
+    evidence_id: "research-page-" + (index + 1),
+    source: page.url,
+    content: page.markdown.trim().slice(0, 12000),
+    confidence: Math.min(0.5, bounded(reportConfidence), bounded(page.relevance)),
+  };
+}
+
+async function stageGoalAsCampaignDraft() {
+  const objective = $("#plan-objective").value.trim();
+  if (objective.length < 3 || objective.length > 2000) {
+    showFlash("Enter a clear business goal of at least three characters.", "error");
+    return;
+  }
+  const inputs = collectEvidence();
+  if (inputs.some((item) => (item.source || item.content) &&
+    (!item.source || !item.content || !item.evidence_id))) {
+    showFlash("Complete each partly filled evidence item or remove it first.", "error");
+    return;
+  }
+  if (typeof stageCampaignDraft !== "function") {
+    showFlash("Campaign editor is still loading. Open Campaigns and try again.", "error");
+    return;
+  }
+  await stageCampaignDraft({
+    objective,
+    evidence: inputs.filter((item) => item.source && item.content && item.evidence_id),
+    sourceLabel: "your AI Studio goal and supplied evidence",
+  });
+}
+
 function renderResearch(report) {
   const root = element("div", "research-summary");
   const stats = element("div", "research-stats");
@@ -666,6 +705,60 @@ function renderResearch(report) {
   if (report.blocked_urls.length) root.append(section("Blocked by research policy", listNode(report.blocked_urls)));
   if (report.failed_urls.length) root.append(section("Failed URLs", listNode(report.failed_urls)));
 
+  const eligible = report.pages.filter((page) => page.markdown && page.markdown.trim());
+  if (eligible.length) {
+    const handoff = element("div", "research-handoff");
+    const heading = element("strong", null, "Create a campaign from selected sources");
+    const description = element("p", null,
+      "These pages are unverified research extracts, not approved claims. Read each source and " +
+      "choose what to include in a supervised draft. Nothing is published or activated.");
+    const button = element("button", "button button-secondary", "Use selected sources in a draft");
+    button.type = "button";
+    button.disabled = true;
+    const note = element("span", "form-note", "No sources selected");
+    const update = () => {
+      const count = $(".research-pick:checked", root).length;
+      button.disabled = count === 0;
+      note.textContent = count ? count + " source(s) selected for review" : "No sources selected";
+    };
+    button.addEventListener("click", async () => {
+      const picked = $(".research-pick:checked", root)
+        .map((check) => Number(check.dataset.pageIndex));
+      const evidence = picked.map((index) => researchPageToDraftEvidence(
+        report.pages[index], index, report.confidence,
+      ));
+      const objective = $("#research-objective").value.trim();
+      if (typeof stageCampaignDraft !== "function") {
+        showFlash("Campaign editor is still loading. Open Campaigns and try again.", "error");
+        return;
+      }
+      await stageCampaignDraft({
+        objective, evidence,
+        seedUrls: picked.map((index) => report.pages[index].url),
+        sourceLabel: "selected public-web research",
+      });
+    });
+    handoff.append(heading, description, button, note);
+    root.append(handoff);
+    report.pages.forEach((page, index) => {
+      const card = $(".research-page", root)[index];
+      if (!card) return;
+      const label = element("label", "research-pick-label");
+      const check = element("input", "research-pick");
+      check.type = "checkbox";
+      check.dataset.pageIndex = String(index);
+      check.disabled = !page.markdown || !page.markdown.trim();
+      check.addEventListener("change", update);
+      label.append(check, element("span", null, "Include as draft evidence"));
+      card.append(label);
+      const details = element("details", "research-full-extract");
+      details.append(
+        element("summary", null, "Review extracted source text"),
+        element("pre", "code-block", (page.markdown || "").slice(0, 12000)),
+      );
+      card.append(details);
+    });
+  }
   $("#research-result").className = "";
   $("#research-result").replaceChildren(root);
 }
@@ -720,6 +813,7 @@ function initialize() {
   $("#run-ai-probe").addEventListener("click", runAIProbe);
   $("#add-evidence").addEventListener("click", () => addEvidence());
   $("#plan-form").addEventListener("submit", submitPlan);
+  $("#plan-to-campaign").addEventListener("click", stageGoalAsCampaignDraft);
   $("#copy-decision").addEventListener("click", copyDecision);
   $("#refresh-decisions").addEventListener("click", () => loadDecisions());
   $("#decision-search").addEventListener("input", renderDecisionList);
