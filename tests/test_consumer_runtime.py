@@ -5,6 +5,7 @@ import asyncio
 import httpx
 
 from instabotai.campaigns.domain import WorkerTick
+from instabotai.intelligence import IntelligenceProbe
 from instabotai.settings import Settings
 from instabotai.web import create_app, validate_ui_bind
 
@@ -16,6 +17,12 @@ class WorkerOnlyService:
     async def worker_tick(self) -> WorkerTick:
         self.ticks += 1
         return WorkerTick(planned_campaign_id="campaign-1")
+
+    async def ai_check(self) -> IntelligenceProbe:
+        raise AssertionError("the consumer startup must not call live AI")
+
+    async def profile(self) -> dict[str, object]:
+        raise AssertionError("the consumer startup must not access live Instagram")
 
 
 def settings(**overrides: object) -> Settings:
@@ -121,9 +128,9 @@ async def test_embedded_worker_runs_and_reports_health() -> None:
     assert app.state.consumer_worker_status.running is False
 
 
-class SensitiveFailureService:
+class SensitiveFailureService(WorkerOnlyService):
     def __init__(self, *, raise_error: bool) -> None:
-        self.ticks = 0
+        super().__init__()
         self.raise_error = raise_error
 
     async def worker_tick(self) -> WorkerTick:
