@@ -126,3 +126,7 @@ select {
   .campaign-job-toolbar { align-items: stretch; }
   .campaign-job-campaign-filter { width: 100%; }
 }
+
+.outcome-field { display: grid; gap: 5px; min-width: 0; }
+.outcome-field span { font-size: 12px; color: var(--muted); }
+.outcome-field input { min-width: 0; width: 100%; }

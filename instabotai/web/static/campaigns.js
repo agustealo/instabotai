@@ -249,8 +249,8 @@ async function saveCampaignFromForm(event) {
 }
 
 async function refreshCampaignWorkspace(showErrors = true) {
-  const button = $("#refresh-campaigns");
-  setBusy(button, true, "Refreshing…");
+  const buttons = [$("#refresh-campaigns"), $("#refresh-jobs")];
+  buttons.forEach((button) => setBusy(button, true, "Refreshing…"));
   try {
     const [campaigns, jobs] = await Promise.all([
       api("/api/campaigns?limit=200"),
@@ -265,7 +265,7 @@ async function refreshCampaignWorkspace(showErrors = true) {
   } catch (error) {
     if (showErrors) showFlash(`Could not load campaign workspace: ${error.message}`, "error");
   } finally {
-    setBusy(button, false);
+    buttons.forEach((button) => setBusy(button, false));
   }
 }
 
@@ -415,6 +415,8 @@ function renderJobOutcome(job) {
     element("span", null, "This is the only signal fed back into campaign learning."),
   );
   const form = element("form", "outcome-form");
+  const rewardLabel = element("label", "outcome-field");
+  rewardLabel.append(element("span", null, "Business result score (0 to 1)"));
   const reward = element("input", "outcome-reward");
   reward.type = "number";
   reward.min = "0";
@@ -422,14 +424,17 @@ function renderJobOutcome(job) {
   reward.step = "0.05";
   reward.value = "0.5";
   reward.required = true;
-  reward.setAttribute("aria-label", "Outcome reward from zero to one");
+  rewardLabel.append(reward);
+  const noteLabel = element("label", "outcome-field");
+  noteLabel.append(element("span", null, "What actually happened?"));
   const note = element("input", "outcome-note-input");
   note.type = "text";
   note.maxLength = 4000;
-  note.placeholder = "What happened after execution?";
+  note.placeholder = "Observed engagement, leads, sales or another verifiable result";
+  noteLabel.append(note);
   const submit = element("button", "button button-secondary button-small", "Record outcome");
   submit.type = "submit";
-  form.append(reward, note, submit);
+  form.append(rewardLabel, noteLabel, submit);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     setBusy(submit, true, "Recording…");
