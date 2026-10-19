@@ -8,6 +8,7 @@
     info: null,
     report: null,
     worker: null,
+    runtime: null,
     campaignCount: null,
     refreshing: false,
   };
@@ -104,7 +105,7 @@
       option.value = value;
       model.append(option);
     }
-    model.value = state.runtime && state.runtime.ai.provider === "openai_compatible" ?
+    model.value = setupState.runtime && setupState.runtime.ai.provider === "openai_compatible" ?
       "openai_compatible" : "ollama";
     modelLabel.append(model);
 
@@ -120,7 +121,7 @@
       option.value = value;
       instagram.append(option);
     }
-    instagram.value = state.runtime && state.runtime.instagram.provider === "private" ?
+    instagram.value = setupState.runtime && setupState.runtime.instagram.provider === "private" ?
       "private" : "official";
     instagramLabel.append(instagram);
 
@@ -258,8 +259,10 @@
       renderReadiness(readiness);
       const extras = await Promise.allSettled([
         api("/api/consumer"), api("/api/worker"), api("/api/campaigns?limit=1"),
+        api("/api/runtime"),
       ]);
       setupState.info = extras[0].status === "fulfilled" ? extras[0].value : null;
+      setupState.runtime = extras[3].status === "fulfilled" ? extras[3].value : null;
       setupState.worker = extras[1].status === "fulfilled" ? extras[1].value : null;
       setupState.campaignCount = extras[2].status === "fulfilled" ?
         extras[2].value.length : null;
@@ -268,7 +271,7 @@
       renderProgress();
       renderCampaign();
 
-      const heroLink = document.querySelector('#view-overview [data-go="ai"]');
+      const heroLink = document.querySelector("#view-overview .hero [data-go]");
       if (heroLink && !readiness.ready) {
         heroLink.dataset.go = "setup";
         heroLink.textContent = "Finish setup";
