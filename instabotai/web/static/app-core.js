@@ -157,12 +157,32 @@ function setBusy(button, busy, busyLabel) {
   }
 }
 
+function setMobileNavigation(open) {
+  const toggle = $("#mobile-nav-toggle");
+  const nav = $("#primary-nav");
+  if (!toggle || !nav) return;
+  nav.classList.toggle("is-open", open);
+  toggle.setAttribute("aria-expanded", String(open));
+  toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+}
+
 function openView(name) {
-  $$(".nav-item").forEach((item) => item.classList.toggle("is-active", item.dataset.view === name));
-  $$(".view").forEach((view) => view.classList.toggle("is-active", view.id === `view-${name}`));
-  const active = $(`#view-${name}`);
-  $("#view-title").textContent = active ? active.dataset.title || name : name;
+  const active = document.getElementById("view-" + name);
+  if (!active) return;
+  const fromNavigation = document.activeElement &&
+    document.activeElement.matches(".nav-item, [data-go]");
+  $$(".nav-item").forEach((item) => {
+    const selected = item.dataset.view === name;
+    item.classList.toggle("is-active", selected);
+    if (selected) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+  $$(".view").forEach((view) => view.classList.toggle("is-active", view === active));
+  const title = $("#view-title");
+  title.textContent = active.dataset.title || name;
+  setMobileNavigation(false);
   window.scrollTo({ top: 0, behavior: "smooth" });
+  if (fromNavigation) title.focus({ preventScroll: true });
 
   if (name === "decisions") loadDecisions();
 }
@@ -844,6 +864,19 @@ function wireNavigation() {
 
 function initialize() {
   wireNavigation();
+  const toggle = $("#mobile-nav-toggle");
+  if (toggle) {
+    toggle.addEventListener("click", () =>
+      setMobileNavigation(toggle.getAttribute("aria-expanded") !== "true"));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && toggle.getAttribute("aria-expanded") === "true") {
+        setMobileNavigation(false);
+        toggle.focus();
+      }
+    });
+  }
+  const initial = document.querySelector(".nav-item.is-active");
+  if (initial) initial.setAttribute("aria-current", "page");
   $("#refresh-runtime").addEventListener("click", loadRuntime);
   $("#run-readiness").addEventListener("click", () => loadReadiness(true));
   $("#run-ai-probe").addEventListener("click", runAIProbe);

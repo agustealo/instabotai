@@ -8,6 +8,7 @@ These tests are automation evidence, not a substitute for a human acceptance tri
 from __future__ import annotations
 
 import json
+import re
 import socket
 import threading
 import time
@@ -106,7 +107,7 @@ def save_source(page: Page, title: str) -> None:
     page.locator("#library-content").fill("Autumn product imagery and dates were approved.")
     page.locator("#library-tags").fill("product, launch")
     page.locator("#library-form button[type='submit']").click()
-    expect(page.locator(".library-entry")).to_contain_text(title)
+    expect(page.locator(".library-entry").filter(has_text=title)).to_be_visible()
 
 
 def test_saved_evidence_review_and_supervised_campaign_creation(
@@ -259,3 +260,117 @@ def test_stale_browser_review_is_rejected_without_overwriting(
     finally:
         context_a.close()
         context_b.close()
+
+
+@pytest.mark.parametrize("width", [320, 375, 768, 1024])
+def test_viewports_have_accessible_navigation_without_page_overflow(
+    browser: Browser, consumer_url: str, width: int,
+) -> None:
+    """Small devices must expose every destination and never require page-wide panning."""
+
+    context = browser.new_context(
+        viewport={"width": width, "height": 800}, reduced_motion="reduce",
+    )
+    try:
+        page = context.new_page()
+        uncaught: list[str] = []
+        page.on("pageerror", lambda error: uncaught.append(str(error)))
+        page.goto(consumer_url, wait_until="domcontentloaded")
+        expect(page.locator('.nav-item[data-view="library"]')).to_be_attached()
+        mobile = width <= 840
+        menu = page.locator("#mobile-nav-toggle")
+        if mobile:
+            expect(menu).to_be_visible()
+            expect(menu).to_have_attribute("aria-expanded", "false")
+            expect(page.locator("#primary-nav")).to_be_hidden()
+        else:
+            expect(menu).to_be_hidden()
+            expect(page.locator("#primary-nav")).to_be_visible()
+
+        for destination in ("library", "campaigns", "research", "ai", "setup"):
+            if mobile:
+                menu.click()
+                expect(menu).to_have_attribute("aria-expanded", "true")
+            item = page.locator(f'.nav-item[data-view="{destination}"]')
+            item.click()
+            expect(page.locator("#view-" + destination)).to_have_class(
+                re.compile(r"\bis-active\b"),
+            )
+            expect(item).to_have_attribute("aria-current", "page")
+            expect(page.locator("#view-title")).to_be_focused()
+            if mobile:
+                expect(menu).to_have_attribute("aria-expanded", "false")
+                expect(page.locator("#primary-nav")).to_be_hidden()
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth + 2"
+            ), f"Horizontal page overflow at {width}px in {destination}"
+
+        assert not uncaught, f"Uncaught JavaScript errors at {width}px: {uncaught}"
+    finally:
+        context.close()
+
+
+def test_mobile_keyboard_navigation_skip_link_escape_and_dialog_focus(
+    browser: Browser, consumer_url: str,
+) -> None:
+    """Keyboard users can bypass navigation, close it with Escape, and cancel a review."""
+
+    context = browser.new_context(
+        viewport={"width": 375, "height": 760}, reduced_motion="reduce",
+    )
+    try:
+        page = context.new_page()
+        page.goto(consumer_url, wait_until="domcontentloaded")
+        expect(page.locator('.nav-item[data-view="library"]')).to_be_attached()
+        page.keyboard.press("Tab")
+        expect(page.get_by_role("link", name="Skip to main content")).to_be_focused()
+        page.keyboard.press("Enter")
+        assert page.evaluate("location.hash") == "#main-content"
+
+        menu = page.locator("#mobile-nav-toggle")
+        menu.focus()
+        page.keyboard.press("Enter")
+        expect(menu).to_have_attribute("aria-expanded", "true")
+        page.keyboard.press("Escape")
+        expect(menu).to_have_attribute("aria-expanded", "false")
+        expect(menu).to_be_focused()
+
+        menu.click()
+        page.locator('.nav-item[data-view="library"]').click()
+        save_source(page, "Keyboard focus review source")
+        entry = page.locator(".library-entry").filter(has_text="Keyboard focus review source")
+        review = entry.get_by_role("button", name="Mark reviewed", exact=True)
+        review.focus()
+        page.keyboard.press("Enter")
+        dialog = page.locator("dialog[open]")
+        expect(dialog).to_be_visible()
+        assert page.evaluate(
+            "Boolean(document.activeElement.closest('dialog[open]'))"
+        ), "Dialog must receive keyboard focus"
+        page.keyboard.press("Escape")
+        expect(dialog).to_have_count(0)
+        expect(entry).to_contain_text("Unverified")
+        expect(page.locator("#library-form")).to_be_visible()
+    finally:
+        context.close()
+
+
+def test_library_failure_is_announced_and_manual_refresh_recovers(page: Page) -> None:
+    """A server error must not leave the consumer believing the source list is healthy."""
+
+    failure = {"code": "unavailable", "message": "Temporary local storage outage"}
+    page.route(
+        "**/api/evidence-library?*",
+        lambda route: route.fulfill(
+            status=503, content_type="application/json", body=json.dumps(failure),
+        ),
+    )
+    open_library(page)
+    expect(page.locator("#flash")).to_have_attribute("role", "alert")
+    expect(page.locator("#library-status")).to_contain_text(
+        "Temporary local storage outage"
+    )
+    page.unroute("**/api/evidence-library?*")
+    page.locator("#library-refresh").click()
+    expect(page.locator("#library-status")).to_contain_text("Showing the current page")
+    expect(page.locator("#library-list")).to_be_visible()
