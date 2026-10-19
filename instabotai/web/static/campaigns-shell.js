@@ -42,6 +42,34 @@
           provider execution spine. A successful provider call is not treated as a successful
           business outcome until an outcome is explicitly recorded.
         </div>
+        <article class="panel campaign-jobs-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Your action inbox</p>
+              <h3>Approvals and campaign activity</h3>
+              <p>Review what AI proposed, decide what may run, and see which actions still need real-world results.</p>
+            </div>
+            <button type="button" class="button button-secondary" id="refresh-jobs">Refresh activity</button>
+          </div>
+          <div id="campaign-job-summary" class="campaign-job-summary" aria-live="polite"></div>
+          <div class="campaign-job-toolbar">
+            <div class="campaign-job-filters" role="group" aria-label="Show campaign actions by stage">
+              <button type="button" class="button button-small button-secondary" data-job-filter="review" aria-pressed="true">Needs approval <span data-job-count="review"></span></button>
+              <button type="button" class="button button-small button-ghost" data-job-filter="scheduled" aria-pressed="false">Scheduled <span data-job-count="scheduled"></span></button>
+              <button type="button" class="button button-small button-ghost" data-job-filter="history" aria-pressed="false">Results &amp; history <span data-job-count="history"></span></button>
+              <button type="button" class="button button-small button-ghost" data-job-filter="all" aria-pressed="false">All <span data-job-count="all"></span></button>
+            </div>
+            <label class="campaign-job-campaign-filter"><span>Campaign</span>
+              <select id="campaign-job-campaign-select" aria-label="Filter campaign activity by campaign">
+                <option value="">All campaigns</option>
+              </select>
+            </label>
+          </div>
+          <p id="campaign-job-context" class="campaign-job-context" role="status"></p>
+          <div id="campaign-job-list" class="campaign-job-list" aria-live="polite">
+            <div class="empty-state">Open Campaigns to load your approval queue.</div>
+          </div>
+        </article>
         <div class="two-column campaign-layout">
           <article class="panel campaign-create-panel">
             <div class="panel-heading"><div><p class="eyebrow">Durable automation</p><h3 id="campaign-form-heading">Create campaign</h3><p>Build recurring work from approved evidence or bounded public-web research.</p></div></div>
@@ -66,10 +94,7 @@
             <div id="campaign-list" class="campaign-list"><div class="empty-state">Open Campaigns to load durable campaign state.</div></div>
           </article>
         </div>
-        <article class="panel campaign-jobs-panel">
-          <div class="panel-heading"><div><p class="eyebrow">Approval and execution</p><h3>Campaign jobs</h3><p>Inspect every reviewed action, authorize it deliberately, execute through policy, export its secret-free evidence, and record the actual outcome.</p></div></div>
-          <div id="campaign-job-list" class="campaign-job-list"><div class="empty-state">No campaign jobs loaded yet.</div></div>
-        </article>`;
+`;
       main.insertBefore(section, decisionView || null);
     }
   }
