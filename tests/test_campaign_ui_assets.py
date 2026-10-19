@@ -50,6 +50,9 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert script.status_code == 200
     assert "function canExecuteJob(job)" in script.text
     assert "function beginCampaignEdit(campaign)" in script.text
+    assert "function readableCampaignCadence(minutes)" in script.text
+    assert "function syncCampaignCadence()" in script.text
+    assert 'id="campaign-cadence-preset"' in shell.text
     assert "expected_updated_at" in script.text
     assert 'method: editingId ? "PATCH" : "POST"' in script.text
     assert 'id="campaign-cancel-edit"' in shell.text
