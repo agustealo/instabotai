@@ -45,7 +45,7 @@ async def test_campaign_workspace_is_shipped_as_local_consumer_assets() -> None:
     assert 'section.id = "view-campaigns"' in shell.text
     assert "Campaign planning and provider execution are deliberately separate" in shell.text
     assert "/assets/trial-evidence.js" in shell.text
-    assert "export its secret-free evidence" in shell.text
+    assert "Review what AI proposed" in shell.text
 
     assert script.status_code == 200
     assert "function canExecuteJob(job)" in script.text
