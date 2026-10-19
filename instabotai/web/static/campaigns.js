@@ -130,7 +130,14 @@ function syncCampaignCadence() {
 
 function applyCampaignCadencePreset() {
   const preset = $("#campaign-cadence-preset").value;
-  if (preset !== "custom") $("#campaign-cadence").value = preset;
+  if (preset === "custom") {
+    $("#campaign-cadence-custom-field").classList.remove("is-hidden");
+    $("#campaign-cadence-help").textContent =
+      "Specify a custom interval. The backend validates the final number of minutes.";
+    $("#campaign-cadence").focus();
+    return;
+  }
+  $("#campaign-cadence").value = preset;
   syncCampaignCadence();
 }
 
