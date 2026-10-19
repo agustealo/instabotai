@@ -155,9 +155,20 @@ check("history", 2);
 check("all", 6);
 assert.match(jobStageCopy(jobs[0]), /decision is required/i);
 assert.match(jobStageCopy(jobs[4]), /business impact has not been recorded/i);
-assert.equal(summarizeProposedAction({action_type: "publish_image", payload: {caption: "Launch"}}).message, "Launch");
-assert.equal(summarizeProposedAction({action_type: "reply_to_comment", target_id: "123", payload: {message: "Thanks!"}}).context, "Comment: 123");
-assert.match(summarizeProposedAction({action_type: "hide_comment", payload: {hide: false}}).title, /Unhide/);
+assert.equal(
+  summarizeProposedAction({action_type: "publish_image", payload: {caption: "Launch"}}).message,
+  "Launch",
+);
+assert.equal(
+  summarizeProposedAction({
+    action_type: "reply_to_comment", target_id: "123", payload: {message: "Thanks!"},
+  }).context,
+  "Comment: 123",
+);
+assert.match(
+  summarizeProposedAction({action_type: "hide_comment", payload: {hide: false}}).title,
+  /Unhide/,
+);
 `);
 verify({addEventListener() {}}, jobs, assert);
 """
