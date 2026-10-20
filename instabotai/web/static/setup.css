@@ -34,3 +34,25 @@
   .setup-controls { flex-direction: column; }
   .setup-check-heading { align-items: flex-start; }
 }
+
+/* The first campaign starts with evidence, research or a goal, not an empty form. */
+.setup-checks { margin-top: 12px; }
+.setup-check-detail { font-size: 13px; line-height: 1.6; }
+.setup-check-error { font-size: 13px; line-height: 1.6; }
+.setup-start-panel .setup-help { max-width: 810px; }
+.setup-routes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px; margin-top: 16px; }
+.setup-route { min-width: 0; display: flex; flex-direction: column; align-items: start;
+  padding: 16px; gap: 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); background: var(--bg-soft); }
+.setup-route strong { font-size: 15px; line-height: 1.4; }
+.setup-route p { flex: 1; color: var(--muted); font-size: 13px;
+  line-height: 1.6; margin: 0; }
+.setup-route .button { width: 100%; white-space: normal; min-height: 44px; }
+.setup-manual { display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; margin-top: 16px; border-top: 1px solid var(--border);
+  padding-top: 12px; }
+.setup-manual span { font-size: 13px; color: var(--muted); }
+@media (max-width: 980px) {
+  .setup-routes { grid-template-columns: 1fr; }
+}
