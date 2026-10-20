@@ -344,3 +344,19 @@ def test_approval_copy_and_result_classification_are_explicit() -> None:
     assert ".campaign-approval-consequence" in styles
 
 
+def test_review_ui_prioritizes_user_information_over_internal_ids() -> None:
+    static = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    script = (static / "campaigns.js").read_text(encoding="utf-8")
+    library = (static / "evidence-library.js").read_text(encoding="utf-8")
+    css = (static / "app.css").read_text(encoding="utf-8")
+    assert '["AI confidence", formatPercent(job.action.confidence)]' in script
+    assert 'section("Decision ID", job.decision_id)' in script
+    assert 'section("Job ID", job.job_id)' in script
+    assert 'classList.add("needs-review")' in script
+    assert "campaign-job-error" in script
+    assert "Technical details: payload, IDs and provider state" in script
+    assert 'campaignActionButton("Execute", "button-danger"' in script
+    assert 'libNode("details", "library-entry-more")' in library
+    assert 'libNode("summary", null, "More options:' in library
+    assert ".meta-card span { color: var(--muted); font-size: 12px;" in css
+    assert ".button-small { padding: 9px 12px; font-size: 12px;" in css
