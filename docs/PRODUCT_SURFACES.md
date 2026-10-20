@@ -29,6 +29,25 @@ The real console capture is reproducible. Run the manual **Docs Visual Capture**
 **Remote bind:** rejected in the consumer alpha, even when the legacy `INSTABOTAI_UI_ALLOW_REMOTE` setting is enabled.  
 **Write authority:** policy-mediated only. Browser requests continue through durable campaign state, approval, policy, quota, idempotency, ledger, and provider authorities.
 
+### Guided first campaign
+
+Get started now renders the canonical readiness checks it previously computed but
+did not display: durable state, AI provider, Instagram provider, write safeguards,
+real connectivity and scheduler status. This is read-only and makes blockers and
+existing server-side remediation visible, without collecting credentials.
+
+When a user has no campaign, the next step no longer sends them straight into an
+unprepared campaign form. It offers three supported paths: **Save source material**
+in Evidence Library, **Research my topic** through bounded public-web research,
+or **Open AI Studio** to work from a business goal and evidence. An optional
+**Open campaign editor** still exists for people who already have approved material.
+Returning users with a campaign instead get an existing-campaign link. Route buttons
+only navigate; they never create jobs, activate automation, or send Instagram writes.
+
+A late readiness response cannot pull a user off another workspace after they have
+already left Overview. Browser acceptance covers desktop/mobile navigation,
+visibility of all readiness checks, and confirmation that routing performs no write.
+
 ### Overview
 
 ![InstabotAI consumer console Overview](screenshots/consumer-console-overview.png)

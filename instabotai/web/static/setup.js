@@ -191,13 +191,7 @@
 
   function renderChecks() {
     const target = document.querySelector("#setup-checks");
-    target.replaceChildren(
-      step("Local runtime and durable state", ["runtime", "state"]),
-      step("AI provider configuration", ["ai_configuration"]),
-      step("Instagram account configuration", ["instagram_configuration"]),
-      step("Human approval and write limits", ["write_approval", "write_capacity"]),
-      step("Real model and Instagram connectivity", ["ai_live", "instagram_live"]),
-    );
+    target.replaceChildren();
     const worker = setupState.worker;
     const status = make("div", "setup-check");
     const header = make("div", "setup-check-heading");
@@ -212,7 +206,14 @@
     if (worker && worker.last_error) {
       status.append(make("p", "setup-check-error", worker.last_error));
     }
-    target.append(status);
+    target.append(
+      step("Local runtime and durable state", ["runtime", "state"]),
+      step("AI provider configuration", ["ai_configuration"]),
+      step("Instagram account configuration", ["instagram_configuration"]),
+      step("Human approval and write limits", ["write_approval", "write_capacity"]),
+      step("Real model and Instagram connectivity", ["ai_live", "instagram_live"]),
+      status,
+    );
   }
 
   function renderProgress() {
@@ -235,16 +236,69 @@
         "Live verification is read-only and never authorizes Instagram writes."));
   }
 
+  function routeToWorkspace(view) {
+    return () => {
+      const destination = document.querySelector("#view-" + view);
+      if (!destination) {
+        showFlash("That workspace has not loaded. Refresh the console and try again.", "error");
+        return;
+      }
+      openView(view);
+      if (view === "library" && typeof refreshEvidenceLibrary === "function") {
+        refreshEvidenceLibrary();
+      }
+    };
+  }
+
+  function guidedRoute(title, description, actionLabel, view) {
+    const card = make("div", "setup-route");
+    const heading = make("strong", null, title);
+    const explanation = make("p", null, description);
+    const action = makeButton(actionLabel, "button-secondary", routeToWorkspace(view));
+    action.dataset.go = view;
+    card.append(heading, explanation, action);
+    return card;
+  }
+
   function renderCampaign() {
     const target = document.querySelector("#setup-campaign");
     target.replaceChildren();
-    const info = make("p", "setup-help", setupState.campaignCount === null ?
-      "Campaign history is unavailable." :
-      setupState.campaignCount === 0 ? "You do not have a campaign yet. Create a supervised draft to begin." :
-      "You already have a campaign. Open your workspace to review its state.");
-    target.append(info, makeButton(setupState.campaignCount === 0 ?
-      "Create a draft campaign" : "Open Campaigns", "button-primary",
-      () => openView("campaigns")));
+    if (setupState.campaignCount > 0) {
+      const existing = makeButton("Open existing campaigns", "button-primary",
+        routeToWorkspace("campaigns"));
+      existing.dataset.go = "campaigns";
+      target.append(
+        make("p", "setup-help", "You already have a campaign. Review its status, " +
+          "proposed actions and results in your Campaigns workspace."),
+        existing,
+      );
+      return;
+    }
+    const intro = make("p", "setup-help", setupState.campaignCount === null ?
+      "Campaign history could not be loaded. You can prepare material without activating " +
+        "or publishing anything." :
+      "A campaign needs an objective and evidence or permitted research. Choose how " +
+        "you want to begin; none of these paths publishes to Instagram.");
+    const routes = make("div", "setup-routes");
+    routes.append(
+      guidedRoute("I have source material",
+        "Save your product details or approved brief in Evidence Library, " +
+        "review the source, then select it to prepare a supervised draft.",
+        "Save source material", "library"),
+      guidedRoute("I want to research first",
+        "Investigate permitted public URLs, review the extracts, and save useful " +
+        "sources before creating a campaign.",
+        "Research my topic", "research"),
+      guidedRoute("I have a business goal",
+        "Start in AI Studio with your objective and evidence. Review the proposed " +
+        "plan, then continue into the supervised campaign editor.",
+        "Open AI Studio", "ai"),
+    );
+    const manual = make("div", "setup-manual");
+    manual.append(make("span", null, "Already have your evidence prepared?"),
+      makeButton("Open campaign editor", "button-ghost",
+        routeToWorkspace("campaigns")));
+    target.append(intro, routes, manual);
   }
 
   async function refreshSetup(live) {
@@ -280,7 +334,8 @@
         heroLink.textContent = "Open Campaigns";
       }
 
-      if (setupState.firstLoad && !readiness.ready && setupState.campaignCount === 0) {
+      if (setupState.firstLoad && !readiness.ready && setupState.campaignCount === 0 &&
+          document.querySelector("#view-overview.is-active")) {
         openView("setup");
       }
       setupState.firstLoad = false;

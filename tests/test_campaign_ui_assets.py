@@ -365,3 +365,20 @@ def test_review_ui_prioritizes_user_information_over_internal_ids() -> None:
     assert 'libNode("summary", null, "More options:' in library
     assert ".meta-card span { color: var(--muted); font-size: 12px;" in css
     assert ".button-small { padding: 9px 12px; font-size: 12px;" in css
+
+
+def test_first_run_renders_all_readiness_checks_and_real_start_paths() -> None:
+    path = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    script = (path / "setup.js").read_text(encoding="utf-8")
+    css = (path / "setup.css").read_text(encoding="utf-8")
+    assert 'target.append(\n      step("Local runtime and durable state"' in script
+    assert 'step("AI provider configuration"' in script
+    assert 'step("Instagram account configuration"' in script
+    assert 'step("Human approval and write limits"' in script
+    assert 'step("Real model and Instagram connectivity"' in script
+    assert 'guidedRoute("I have source material"' in script
+    assert 'guidedRoute("I want to research first"' in script
+    assert 'guidedRoute("I have a business goal"' in script
+    assert 'setupState.campaignCount > 0' in script
+    assert "document.querySelector(\"#view-overview.is-active\")" in script
+    assert ".setup-routes" in css
