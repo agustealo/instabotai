@@ -37,7 +37,10 @@
 
 /* The first campaign starts with evidence, research or a goal, not an empty form. */
 .setup-checks { margin-top: 12px; }
-.setup-check-detail { font-size: 13px; line-height: 1.6; }
+.setup-check-detail { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.setup-check { min-width: 0; overflow-wrap: anywhere; }
+.setup-check-heading { min-width: 0; }
+.setup-check-heading > strong { min-width: 0; overflow-wrap: anywhere; }
 .setup-check-error { font-size: 13px; line-height: 1.6; }
 .setup-start-panel .setup-help { max-width: 810px; }
 .setup-routes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));

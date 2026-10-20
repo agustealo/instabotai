@@ -303,7 +303,16 @@ def test_viewports_have_accessible_navigation_without_page_overflow(
                 expect(page.locator("#primary-nav")).to_be_hidden()
             assert page.evaluate(
                 "document.documentElement.scrollWidth <= window.innerWidth + 2"
-            ), f"Horizontal page overflow at {width}px in {destination}"
+            ), (
+                f"Horizontal page overflow at {width}px in {destination}: " +
+                str(page.evaluate("""() => [...document.querySelectorAll('*')]
+                    .filter(node => node.getBoundingClientRect().right >
+                      window.innerWidth + 2 && getComputedStyle(node).position !== 'fixed')
+                    .slice(0, 10).map(node => ({
+                      tag: node.tagName, id: node.id, className: node.className,
+                      right: node.getBoundingClientRect().right
+                    }))"""))
+            )
 
         assert not uncaught, f"Uncaught JavaScript errors at {width}px: {uncaught}"
     finally:
@@ -764,6 +773,7 @@ def test_onboarding_existing_campaign_does_not_offer_new_user_routes(
         ),
     )
     page.reload(wait_until="domcontentloaded")
+    page.locator('.nav-item[data-view="setup"]').click()
     expect(page.get_by_role("button", name="Open existing campaigns")).to_be_visible()
     expect(page.locator(".setup-route")).to_have_count(0)
     page.get_by_role("button", name="Open existing campaigns").click()
