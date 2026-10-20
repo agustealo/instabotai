@@ -7,7 +7,12 @@ Source-level tests and automated CI do **not** establish that a human can comple
 
 - Start `instabotai ui` on a machine with durable local state and no Instagram credentials.
 - Verify **Get started** is discovered automatically when mandatory readiness is incomplete and no campaigns exist.
-- Confirm each blocker shows a concrete next action, with no stack traces, bearer tokens, or passwords.
+- Confirm **all six** readiness surfaces are actually rendered: local runtime/state, AI
+  provider, Instagram provider, write approval/limits, live connectivity and scheduler.
+  Each required blocker must show its existing detailed remediation, without stack
+  traces, bearer tokens or passwords.
+- Verify the initial readiness fetch does not hijack the UI if the user navigates away
+  from Overview before it completes.
 - The AI provider and Instagram provider selectors must generate local configuration examples only.
   A changed selector must never silently change the actual running provider or claim connectivity.
 - Copy the configuration path/example, populate it locally and restart. Confirm the loaded
@@ -24,6 +29,14 @@ Source-level tests and automated CI do **not** establish that a human can comple
 
 ## 3. Create a first supervised campaign
 
+- With no campaigns, Step 3 presents three genuinely different routes: save/review
+  existing source material in Evidence Library, investigate permitted public URLs in
+  Research, or start with a goal and evidence in AI Studio. Each route must open the
+  real corresponding surface without creating a campaign or authorizing a write.
+- Confirm the manual **Open campaign editor** option remains for a user who already
+  prepared evidence. An existing campaign instead shows **Open existing campaigns**.
+- Check 375px and 1280px layouts, focus movement, mobile navigation and no horizontal
+  page scrolling when selecting and returning from the three routes.
 - Enter a meaningful name and goal; use approved evidence or enable research with seed URLs.
 - Leave both evidence and seed URLs empty: receive a useful validation error, not a 500.
 - Choose **Once a day**, **Twice a day**, **Every 6 hours**, **Once a week** and
