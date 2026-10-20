@@ -728,6 +728,7 @@ function renderCampaignJobs() {
   const cards = visible.map((job) => {
     const campaign = campaignById(job.campaign_id);
     const card = element("article", "campaign-job-card");
+    card.dataset.jobId = job.job_id;
     if (job.status === "pending_approval") card.classList.add("needs-review");
     const headingId = "job-heading-" + job.job_id;
     card.setAttribute("aria-labelledby", headingId);
@@ -755,9 +756,6 @@ function renderCampaignJobs() {
       ["AI confidence", formatPercent(job.action.confidence)],
       ["Approval", humanize(job.action.approval)],
       ["Scheduled", formatDate(job.scheduled_for)],
-      ["Attempts", `${job.attempt_count}/${job.max_attempts}`],
-      ["Decision", shortId(job.decision_id)],
-      ["Job", shortId(job.job_id)],
     ].forEach(([label, value]) => {
       const item = element("div", "meta-card");
       item.append(element("span", null, label), element("strong", null, value));
@@ -778,7 +776,7 @@ function renderCampaignJobs() {
       );
     }
     if (canExecuteJob(job)) {
-      actions.append(campaignActionButton("Execute", "button-primary", async () => {
+      actions.append(campaignActionButton("Execute", "button-danger", async () => {
         const result = await api(`/api/campaign-jobs/${job.job_id}/execute`, {
           method: "POST", body: "{}",
         });
@@ -799,10 +797,13 @@ function renderCampaignJobs() {
         (campaign ? campaign.name : shortId(job.campaign_id)));
     }
     const details = element("details", "job-details");
-    const summary = element("summary", null, "Inspect payload and provider state");
+    const summary = element("summary", null, "Technical details: payload, IDs, provider state and evidence");
     const body = element("div", "job-detail-grid");
     body.append(
       section("Action payload", element("pre", "code-block", JSON.stringify(job.action.payload, null, 2))),
+      section("Attempts", `${job.attempt_count}/${job.max_attempts}`),
+      section("Decision ID", job.decision_id),
+      section("Job ID", job.job_id),
       section("Idempotency key", job.action.idempotency_key),
     );
     if (job.last_error) body.append(section("Last error", job.last_error));
@@ -812,6 +813,10 @@ function renderCampaignJobs() {
     details.append(summary, body);
 
     card.prepend(header);
+    if (job.last_error && ["failed", "retry_wait"].includes(job.status)) {
+      card.append(element("p", "campaign-job-error",
+        "Execution error: " + job.last_error));
+    }
     card.append(meta, actions, details, renderJobOutcome(job));
     return card;
   });

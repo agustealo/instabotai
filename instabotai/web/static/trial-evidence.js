@@ -43,13 +43,14 @@
     renderJobs();
     const target = $("#campaign-job-list");
     const cards = $$(".campaign-job-card", target);
-    cards.forEach((card, index) => {
-      const job = campaignState.jobs[index];
-      const actions = $(".campaign-actions", card);
-      if (!job || !actions || $(".trial-evidence-export", actions)) return;
+    cards.forEach((card) => {
+      const job = campaignState.jobs.find((entry) => entry.job_id === card.dataset.jobId);
+      const details = $(".job-details", card);
+      const body = details ? $(".job-detail-grid", details) : null;
+      if (!job || !body || $(".trial-evidence-export", details)) return;
       const button = evidenceButton(job);
       button.classList.add("trial-evidence-export");
-      actions.append(button);
+      body.append(button);
     });
   };
 })();

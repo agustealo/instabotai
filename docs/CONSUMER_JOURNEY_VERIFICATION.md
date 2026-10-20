@@ -132,6 +132,26 @@ Source-level tests and automated CI do **not** establish that a human can comple
   evidence. A green CI gate alone does not prove real-world provider functionality.
 - No distribution or consumer release packaging should be triggered solely by this change.
 
+## 11. Readability and interaction density
+
+- Check 375px and desktop approval cards with long AI reasons, publication captions, and
+  provider failures. The proposed text, confidence, approval, and schedule must be legible
+  without opening technical diagnostics or scrolling sideways.
+- Job IDs, decision IDs, retry attempt counts, idempotency keys and provider payload details
+  must remain available through a keyboard-operable Technical details disclosure, not
+  dominate the everyday decision surface.
+- Failed or retrying jobs must show the last execution error visibly and truthfully, while
+  the full error remains inspectable in technical details.
+- Verify the review and execute paths remain explicit confirmations and do not bypass
+  the canonical policy. An Execute button must be visually distinguishable as a write risk.
+- The Evidence Library should show Edit and Mark reviewed without expanding details;
+  Reject, Reset review and Delete remain available under More options, with native keyboard
+  and Escape handling. Destructive actions still require their original confirmation.
+- Use computed CSS in real Chromium to check essential 12px+ metadata, 14px+ action copy,
+  16px+ card headings and no page-level horizontal overflow.
+- Automated font-size checks are not an accessibility certification. Before release, conduct
+  human screen-reader, contrast, readability, 200% zoom and real-device touch evaluation.
+
 ## Authority boundaries
 
 `InstabotApplication` remains the application service; `CampaignRuntime` owns

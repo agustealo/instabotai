@@ -57,6 +57,21 @@ Users can create supervised drafts, choose common cadence presets or a bounded c
 
 The existing Overview screenshot predates this candidate UI work. It should be recaptured after verification and must not be presented as proof that the new journey has passed human usability review.
 
+### Visual hierarchy and progressive disclosure
+
+Daily use surfaces emphasize the meaning of each proposed Instagram action: its headline,
+preview text, schedule, authorization and visible failure state. Internal identifiers,
+idempotency keys, raw payload and provider diagnostics remain in a keyboard-accessible
+**Technical details** disclosure, not removed from the audit surface. Evidence export also lives inside the disclosure and is bound to the stable visible job ID, including when inbox filters reorder the cards. On mobile and desktop
+the most important review controls remain visible, and an Execute request is visually marked
+as a higher-risk operation. Library entries keep Edit and Mark reviewed visible and tuck
+secondary review/deletion controls under **More options**, preserving confirm-before-delete.
+
+The small-text baseline for key controls, metadata and captions has been increased, with
+consistent line-height and readable card headings. Playwright checks actual computed font
+sizes, responsive overflow, diagnostic access and library action disclosure. These checks do
+not establish full WCAG AA, visual quality by human evaluation, or real-world provider success.
+
 ### Approval inbox and activity
 
 The approval view distinguishes **AI suggestion**, **human authorization**, **provider execution**, and **observed business impact**. Each pending job explains that Approve authorizes a future policy-governed Instagram write and does not publish immediately. The confirmation names the exact proposed action, campaign, source reason, provider, payload, confidence limitations and consequence. Accessible action names include both action type and campaign.

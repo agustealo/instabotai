@@ -529,3 +529,150 @@ def test_business_outcome_requires_explicit_score_and_observation(page: Page) ->
         "reward": 0.2,
         "note": "Two verified inbound enquiries from the launch post.",
     }]
+
+
+@pytest.mark.parametrize("width", [375, 1280])
+def test_review_hierarchy_shows_errors_and_discloses_diagnostics(
+    browser: Browser, consumer_url: str, width: int,
+) -> None:
+    """Decision content must stay readable while IDs and payloads remain available."""
+
+    context = browser.new_context(
+        viewport={"width": width, "height": 850}, reduced_motion="reduce",
+    )
+    try:
+        page = context.new_page()
+        pending = {
+            "job_id": "77" * 16, "campaign_id": "88" * 16,
+            "decision_id": "99" * 16,
+            "status": "pending_approval",
+            "scheduled_for": "2026-10-19T16:00:00+00:00",
+            "attempt_count": 0, "max_attempts": 3,
+            "last_error": None, "provider_result": None,
+            "outcome_reward": None, "outcome_note": "",
+            "created_at": "2026-10-19T14:00:00+00:00",
+            "updated_at": "2026-10-19T14:00:00+00:00",
+            "action": {
+                "action_type": "publish_image",
+                "reason": "Prepared from approved product material.",
+                "confidence": 0.82, "approval": "pending",
+                "idempotency_key": "readable-review-action-001",
+                "target_id": None,
+                "payload": {
+                    "image_url": "https://cdn.example.org/catalog.jpg",
+                    "caption": "Explore the autumn collection.",
+                },
+            },
+        }
+        failed = {
+            **pending, "job_id": "aa" * 16, "decision_id": "bb" * 16,
+            "status": "failed",
+            "last_error": "Temporary provider response prevented publication.",
+            "updated_at": "2026-10-19T15:00:00+00:00",
+        }
+        page.route(
+            "**/api/campaign-jobs?limit=200",
+            lambda route: route.fulfill(
+                content_type="application/json", body=json.dumps([pending, failed]),
+            ),
+        )
+        page.goto(consumer_url, wait_until="domcontentloaded")
+        if width <= 840:
+            page.locator("#mobile-nav-toggle").click()
+        page.locator('.nav-item[data-view="campaigns"]').click()
+
+        review = page.locator(".campaign-job-card.needs-review")
+        expect(review).to_be_visible()
+        expect(review.locator(".job-meta .meta-card")).to_have_count(3)
+        expect(review).to_contain_text("Explore the autumn collection.")
+        expect(review.locator(".campaign-actions button")).to_have_count(3)
+        diagnostics = review.locator("details.job-details")
+        expect(diagnostics).not_to_have_attribute("open", "")
+        expect(diagnostics.locator("summary")).to_contain_text("Technical details")
+        diagnostics.locator("summary").click()
+        expect(diagnostics).to_have_attribute("open", "")
+        expect(diagnostics).to_contain_text("Decision ID")
+        expect(diagnostics).to_contain_text("Idempotency key")
+        expect(diagnostics).to_contain_text("readable-review-action-001")
+        expect(diagnostics).to_contain_text("Attempts")
+
+        size = page.evaluate("""() => {
+          const font = (selector) => parseFloat(
+            getComputedStyle(document.querySelector(selector)).fontSize
+          );
+          return {
+            cardTitle: font(".campaign-job-card .campaign-name"),
+            message: font(".campaign-preview-message"),
+            labels: font(".campaign-job-card .meta-card span"),
+            status: font(".campaign-job-card .pill"),
+            buttons: font(".campaign-job-card .campaign-actions .button"),
+            width: document.documentElement.scrollWidth,
+            viewport: window.innerWidth,
+          };
+        }""")
+        assert size["cardTitle"] >= 16, size
+        assert size["message"] >= 14, size
+        assert size["labels"] >= 12, size
+        assert size["status"] >= 12, size
+        assert size["buttons"] >= 13, size
+        assert size["width"] <= size["viewport"] + 2, size
+
+        requested_bundles: list[str] = []
+
+        def return_evidence(route: object) -> None:
+            requested_bundles.append(route.request.url)
+            route.fulfill(
+                content_type="application/json",
+                body=json.dumps({
+                    "bundle_id": "cc" * 16,
+                    "job_id": failed["job_id"],
+                    "evidence": [],
+                }),
+            )
+
+        page.route("**/api/campaign-jobs/*/evidence", return_evidence)
+        page.locator('[data-job-filter="history"]').click()
+        error = page.locator(".campaign-job-card .campaign-job-error")
+        expect(error).to_be_visible()
+        expect(error).to_contain_text("Temporary provider response")
+        history_card = page.locator(".campaign-job-card")
+        history_details = history_card.locator(".job-details")
+        expect(history_details).not_to_have_attribute("open", "")
+        expect(history_card.locator(".campaign-actions button")).to_have_count(0)
+        export = history_details.get_by_role("button", name="Export evidence")
+        expect(export).to_be_hidden()
+        history_details.locator("summary").click()
+        expect(export).to_be_visible()
+        export.click()
+        expect(page.locator("#flash")).to_contain_text("exported with SHA-256")
+        assert len(requested_bundles) == 1
+        assert requested_bundles[0].endswith(
+            "/api/campaign-jobs/" + failed["job_id"] + "/evidence"
+        ), "Export must use the visible filtered job, never an unrelated list index"
+    finally:
+        context.close()
+
+
+def test_library_everyday_controls_separate_from_secondary_actions(page: Page) -> None:
+    """Review and edit stay obvious, while deletion stays accessible but less prominent."""
+
+    open_library(page)
+    save_source(page, "Readable library actions fixture")
+    entry = page.locator(".library-entry").filter(
+        has_text="Readable library actions fixture"
+    )
+    expect(entry.get_by_role("button", name="Edit")).to_be_visible()
+    expect(entry.get_by_role("button", name="Mark reviewed")).to_be_visible()
+    delete = entry.get_by_role("button", name="Delete")
+    expect(delete).to_be_hidden()
+    details = entry.locator(".library-entry-more")
+    expect(details).not_to_have_attribute("open", "")
+    details.locator("summary").click()
+    expect(details).to_have_attribute("open", "")
+    expect(delete).to_be_visible()
+    delete.click()
+    dialog = page.locator("dialog[open]")
+    expect(dialog).to_contain_text("Delete saved evidence?")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    expect(entry).to_be_visible()
