@@ -264,11 +264,13 @@
     const target = document.querySelector("#setup-campaign");
     target.replaceChildren();
     if (setupState.campaignCount > 0) {
+      const existing = makeButton("Open existing campaigns", "button-primary",
+        routeToWorkspace("campaigns"));
+      existing.dataset.go = "campaigns";
       target.append(
         make("p", "setup-help", "You already have a campaign. Review its status, " +
           "proposed actions and results in your Campaigns workspace."),
-        makeButton("Open existing campaigns", "button-primary",
-          routeToWorkspace("campaigns")),
+        existing,
       );
       return;
     }
