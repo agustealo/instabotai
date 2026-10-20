@@ -676,3 +676,96 @@ def test_library_everyday_controls_separate_from_secondary_actions(page: Page) -
     page.keyboard.press("Escape")
     expect(dialog).to_have_count(0)
     expect(entry).to_be_visible()
+
+
+@pytest.mark.parametrize("width", [375, 1280])
+def test_first_run_exposes_all_checkpoints_and_choose_your_starting_path(
+    browser: Browser, consumer_url: str, width: int,
+) -> None:
+    """A first-time user can find next steps without inventing evidence or publishing."""
+
+    context = browser.new_context(
+        viewport={"width": width, "height": 850}, reduced_motion="reduce",
+    )
+    try:
+        page = context.new_page()
+        writes: list[str] = []
+        page.on(
+            "request",
+            lambda request: writes.append(request.url)
+            if request.method in ("POST", "PATCH", "DELETE") and
+            "/api/campaign" in request.url else None,
+        )
+        page.route(
+            "**/api/campaigns?limit=1",
+            lambda route: route.fulfill(
+                content_type="application/json", body="[]",
+            ),
+        )
+        page.goto(consumer_url, wait_until="domcontentloaded")
+        expect(page.locator("#setup-checks .setup-check")).to_have_count(6)
+        if width <= 840:
+            page.locator("#mobile-nav-toggle").click()
+        page.locator('.nav-item[data-view="setup"]').click()
+        expect(page.locator("#view-setup")).to_have_class(re.compile("is-active"))
+        checks = page.locator("#setup-checks")
+        for name in (
+            "Local runtime and durable state",
+            "AI provider configuration",
+            "Instagram account configuration",
+            "Human approval and write limits",
+            "Real model and Instagram connectivity",
+            "Campaign scheduler",
+        ):
+            expect(checks).to_contain_text(name)
+
+        routes = page.locator(".setup-route")
+        expect(routes).to_have_count(3)
+        expect(page.locator("#setup-campaign")).to_contain_text(
+            "none of these paths publishes to Instagram"
+        )
+        expect(page.locator("#setup-template")).to_be_visible()
+        for action_label, destination in (
+            ("Save source material", "library"),
+            ("Research my topic", "research"),
+            ("Open AI Studio", "ai"),
+        ):
+            page.get_by_role("button", name=action_label, exact=True).click()
+            expect(page.locator("#view-" + destination)).to_have_class(
+                re.compile("is-active")
+            )
+            expect(page.locator("#view-title")).to_be_focused()
+            if width <= 840:
+                page.locator("#mobile-nav-toggle").click()
+            page.locator('.nav-item[data-view="setup"]').click()
+            expect(routes).to_have_count(3)
+
+        page.get_by_role("button", name="Open campaign editor").click()
+        expect(page.locator("#view-campaigns")).to_have_class(re.compile("is-active"))
+        expect(page.locator("#campaign-mode")).to_have_value("supervised")
+        assert writes == [], f"Guided navigation must never write campaign data: {writes}"
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth + 2"
+        ), f"Onboarding horizontally overflows at {width}px"
+    finally:
+        context.close()
+
+
+def test_onboarding_existing_campaign_does_not_offer_new_user_routes(
+    page: Page,
+) -> None:
+    """A returning user reaches existing campaigns instead of another empty draft."""
+
+    page.route(
+        "**/api/campaigns?limit=1",
+        lambda route: route.fulfill(
+            content_type="application/json",
+            body=json.dumps([{"campaign_id": "known-existing-campaign"}]),
+        ),
+    )
+    page.reload(wait_until="domcontentloaded")
+    expect(page.get_by_role("button", name="Open existing campaigns")).to_be_visible()
+    expect(page.locator(".setup-route")).to_have_count(0)
+    page.get_by_role("button", name="Open existing campaigns").click()
+    expect(page.locator("#view-campaigns")).to_have_class(re.compile("is-active"))
+    expect(page.locator("#view-title")).to_be_focused()
