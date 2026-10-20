@@ -282,16 +282,21 @@ function renderLibraryEntries() {
       actions.append(libButton("Mark reviewed", "button-secondary button-small",
         () => reviewLibraryEntry(entry, "reviewed")));
     }
+    const more = libNode("details", "library-entry-more");
+    const summary = libNode("summary", null, "More options: review status and deletion");
+    const secondary = libNode("div", "library-entry-secondary-actions");
     if (entry.review_status !== "unverified") {
-      actions.append(libButton("Reset review", "button-ghost button-small",
+      secondary.append(libButton("Reset review", "button-ghost button-small",
         () => reviewLibraryEntry(entry, "unverified")));
     }
     if (entry.review_status !== "rejected") {
-      actions.append(libButton("Reject", "button-ghost button-small",
+      secondary.append(libButton("Reject", "button-ghost button-small",
         () => reviewLibraryEntry(entry, "rejected")));
     }
-    actions.append(libButton("Delete", "button-ghost button-small",
+    secondary.append(libButton("Delete", "button-ghost button-small",
       () => deleteLibraryEntry(entry)));
+    more.append(summary, secondary);
+    actions.append(more);
     card.append(actions);
     target.append(card);
   }
