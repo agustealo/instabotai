@@ -359,7 +359,7 @@ def test_review_ui_prioritizes_user_information_over_internal_ids() -> None:
     assert "campaignState.jobs[index]" not in trial
     assert 'classList.add("needs-review")' in script
     assert "campaign-job-error" in script
-    assert "Technical details: payload, IDs and provider state" in script
+    assert "Technical details: payload, IDs, provider state and evidence" in script
     assert 'campaignActionButton("Execute", "button-danger"' in script
     assert 'libNode("details", "library-entry-more")' in library
     assert 'libNode("summary", null, "More options:' in library

@@ -62,7 +62,7 @@ The existing Overview screenshot predates this candidate UI work. It should be r
 Daily use surfaces emphasize the meaning of each proposed Instagram action: its headline,
 preview text, schedule, authorization and visible failure state. Internal identifiers,
 idempotency keys, raw payload and provider diagnostics remain in a keyboard-accessible
-**Technical details** disclosure, not removed from the audit surface. On mobile and desktop
+**Technical details** disclosure, not removed from the audit surface. Evidence export also lives inside the disclosure and is bound to the stable visible job ID, including when inbox filters reorder the cards. On mobile and desktop
 the most important review controls remain visible, and an Execute request is visually marked
 as a higher-risk operation. Library entries keep Edit and Mark reviewed visible and tuck
 secondary review/deletion controls under **More options**, preserving confirm-before-delete.
