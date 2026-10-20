@@ -728,6 +728,7 @@ function renderCampaignJobs() {
   const cards = visible.map((job) => {
     const campaign = campaignById(job.campaign_id);
     const card = element("article", "campaign-job-card");
+    card.dataset.jobId = job.job_id;
     if (job.status === "pending_approval") card.classList.add("needs-review");
     const headingId = "job-heading-" + job.job_id;
     card.setAttribute("aria-labelledby", headingId);
@@ -796,7 +797,7 @@ function renderCampaignJobs() {
         (campaign ? campaign.name : shortId(job.campaign_id)));
     }
     const details = element("details", "job-details");
-    const summary = element("summary", null, "Technical details: payload, IDs and provider state");
+    const summary = element("summary", null, "Technical details: payload, IDs, provider state and evidence");
     const body = element("div", "job-detail-grid");
     body.append(
       section("Action payload", element("pre", "code-block", JSON.stringify(job.action.payload, null, 2))),

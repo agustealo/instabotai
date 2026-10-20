@@ -352,6 +352,11 @@ def test_review_ui_prioritizes_user_information_over_internal_ids() -> None:
     assert '["AI confidence", formatPercent(job.action.confidence)]' in script
     assert 'section("Decision ID", job.decision_id)' in script
     assert 'section("Job ID", job.job_id)' in script
+    assert "card.dataset.jobId = job.job_id" in script
+    trial = (static / "trial-evidence.js").read_text(encoding="utf-8")
+    assert "entry.job_id === card.dataset.jobId" in trial
+    assert 'body.append(button)' in trial
+    assert "campaignState.jobs[index]" not in trial
     assert 'classList.add("needs-review")' in script
     assert "campaign-job-error" in script
     assert "Technical details: payload, IDs and provider state" in script

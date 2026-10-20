@@ -617,13 +617,38 @@ def test_review_hierarchy_shows_errors_and_discloses_diagnostics(
         assert size["buttons"] >= 13, size
         assert size["width"] <= size["viewport"] + 2, size
 
+        requested_bundles: list[str] = []
+
+        def return_evidence(route: object) -> None:
+            requested_bundles.append(route.request.url)
+            route.fulfill(
+                content_type="application/json",
+                body=json.dumps({
+                    "bundle_id": "cc" * 16,
+                    "job_id": failed["job_id"],
+                    "evidence": [],
+                }),
+            )
+
+        page.route("**/api/campaign-jobs/*/evidence", return_evidence)
         page.locator('[data-job-filter="history"]').click()
         error = page.locator(".campaign-job-card .campaign-job-error")
         expect(error).to_be_visible()
         expect(error).to_contain_text("Temporary provider response")
-        expect(page.locator(".campaign-job-card .job-details")).not_to_have_attribute(
-            "open", ""
-        )
+        history_card = page.locator(".campaign-job-card")
+        history_details = history_card.locator(".job-details")
+        expect(history_details).not_to_have_attribute("open", "")
+        expect(history_card.locator(".campaign-actions button")).to_have_count(0)
+        export = history_details.get_by_role("button", name="Export evidence")
+        expect(export).to_be_hidden()
+        history_details.locator("summary").click()
+        expect(export).to_be_visible()
+        export.click()
+        expect(page.locator("#flash")).to_contain_text("exported with SHA-256")
+        assert len(requested_bundles) == 1
+        assert requested_bundles[0].endswith(
+            "/api/campaign-jobs/" + failed["job_id"] + "/evidence"
+        ), "Export must use the visible filtered job, never an unrelated list index"
     finally:
         context.close()
 
