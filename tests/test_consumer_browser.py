@@ -862,6 +862,7 @@ def test_readiness_outage_invalidates_old_results_and_retry_recovers(
 
     expect(page.locator("#setup-checks .setup-check")).to_have_count(7)
     page.locator('.nav-item[data-view="setup"]').click()
+    expect(page.get_by_role("button", name="Recheck local setup")).to_be_enabled()
     page.route(
         "**/api/readiness",
         lambda route: route.fulfill(

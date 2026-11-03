@@ -7,8 +7,9 @@ Source-level tests and automated CI do **not** establish that a human can comple
 
 - Start `instabotai ui` on a machine with durable local state and no Instagram credentials.
 - Verify **Get started** is discovered automatically when mandatory readiness is incomplete and no campaigns exist.
-- Confirm **all six** readiness surfaces are actually rendered: local runtime/state, AI
-  provider, Instagram provider, write approval/limits, live connectivity and scheduler.
+- Confirm **all seven** readiness surfaces are rendered: local runtime/state, AI
+  provider, Instagram provider, write approval/limits, optional research dependency,
+  live connectivity and scheduler.
   Each required blocker must show its existing detailed remediation, without stack
   traces, bearer tokens or passwords.
 - Verify the initial readiness fetch does not hijack the UI if the user navigates away
@@ -18,6 +19,17 @@ Source-level tests and automated CI do **not** establish that a human can comple
 - Copy the configuration path/example, populate it locally and restart. Confirm the loaded
   runtime and readiness report reflect the actual selected providers.
 - Run live connection checks deliberately. They must never publish, reply to, or moderate content.
+- Missing Instagram credentials must produce a required fix with the exact local
+  setting name. Optional missing Crawl4AI must be labeled as optional, but the
+  Research starting route must explain the prerequisite before users select it.
+- Simulate an unwritable SQLite path and inspect **Next** remediation. A failed
+  check may never be presented as verified merely because another check passed.
+- Simulate /api/readiness responding 503 after a previous green response. Confirm
+  old green cards disappear, the setup state says nothing is verified, the Overview
+  gate is invalidated, and **Retry local checks** restores current results.
+- Simulate a stopped scheduler with an exception containing a fake credential.
+  The browser must offer a local-log recovery action without rendering the exception,
+  fake credential or an implied live execution guarantee.
 
 ## 2. Understand the state of automation
 
