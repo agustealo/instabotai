@@ -38,6 +38,7 @@
         '<p>Connect the pieces, verify them with real checks, then start a supervised campaign. ' +
         'Credentials are configured on your machine, not entered into this browser.</p></div>' +
         '<div class="setup-progress" id="setup-progress" aria-live="polite"></div>' +
+        '<div class="setup-recovery" id="setup-recovery" role="status" aria-live="polite"></div>' +
         '<div class="two-column setup-columns">' +
         '<article class="panel"><div class="panel-heading"><div>' +
         '<p class="eyebrow">Step 1</p><h3>Configure your providers</h3>' +
@@ -175,16 +176,34 @@
     const warnings = matching.some((check) => check.status === "warn");
     const passed = matching.length === keys.length &&
       matching.every((check) => check.status === "pass");
-    const label = failed ? "Needs attention" : passed ? "Verified" :
-      skipped ? "Not yet checked" : warnings ? "Optional" : "Unknown";
+    const label = !report ? "Not verified" : failed ? "Needs attention" :
+      skipped ? "Not yet checked" : warnings ? "Optional" :
+      passed ? "Verified" : "Unknown";
     const kind = failed ? "bad" : passed ? "good" : "warn";
     const card = make("div", "setup-check");
     const header = make("div", "setup-check-heading");
     header.append(make("strong", null, title), pill(label, kind));
     card.append(header);
+    if (!matching.length) {
+      card.append(make("p", "setup-check-detail",
+        "This check has not returned a result. Do not assume the service is ready."));
+    }
     for (const check of matching) {
-      const detail = check.detail + (check.remediation ? " " + check.remediation : "");
-      card.append(make("p", "setup-check-detail", detail));
+      const item = make("div", "setup-check-item");
+      const heading = make("div", "setup-check-item-heading");
+      const descriptions = {
+        pass: ["Passed", "good"],
+        fail: [check.required ? "Required fix" : "Optional fix", "bad"],
+        warn: ["Optional warning", "warn"],
+        skip: ["Not run", "info"],
+      };
+      const [status, tone] = descriptions[check.status] || ["Unknown", "warn"];
+      heading.append(make("strong", null, check.label), pill(status, tone));
+      item.append(heading, make("p", "setup-check-detail", check.detail));
+      if (check.remediation) {
+        item.append(make("p", "setup-check-remediation", "Next: " + check.remediation));
+      }
+      card.append(item);
     }
     return card;
   }
@@ -192,25 +211,37 @@
   function renderChecks() {
     const target = document.querySelector("#setup-checks");
     target.replaceChildren();
+    if (!setupState.report) {
+      target.append(make("p", "setup-check setup-check-unavailable",
+        "Readiness checks are unavailable. No previous verification is current. " +
+        "Verify that InstabotAI is running locally, then retry."));
+      return;
+    }
     const worker = setupState.worker;
     const status = make("div", "setup-check");
     const header = make("div", "setup-check-heading");
+    const workerHealthy = worker && worker.running && !worker.last_error;
     header.append(make("strong", null, "Campaign scheduler"),
-      pill(worker && worker.running ? "Running" : "Not verified",
-        worker && worker.running ? "good" : "warn"));
+      pill(workerHealthy ? "Running" : "Needs attention",
+        workerHealthy ? "good" : "warn"));
     status.append(header, make("p", "setup-check-detail",
-      !worker ? "Scheduler health could not be loaded. Do not assume campaigns will run." :
+      !worker ? "Scheduler status could not be loaded. Scheduled work is unverified." :
+        worker.last_error ? "Scheduler reported an error. Scheduled execution " +
+          "is not verified, even if the worker still reports running." :
         worker.running ? "The embedded scheduler reports running. Last tick: " +
           (worker.last_tick_at ? formatDate(worker.last_tick_at) : "not completed yet") :
           "The scheduler is not running. Active campaigns will not progress automatically."));
-    if (worker && worker.last_error) {
-      status.append(make("p", "setup-check-error", worker.last_error));
+    if (!workerHealthy) {
+      status.append(make("p", "setup-check-remediation",
+        "Next: Inspect local server logs for the scheduler failure, restart InstabotAI " +
+        "if appropriate, and recheck here. Raw worker exceptions are not shown in the browser."));
     }
     target.append(
       step("Local runtime and durable state", ["runtime", "state"]),
       step("AI provider configuration", ["ai_configuration"]),
       step("Instagram account configuration", ["instagram_configuration"]),
       step("Human approval and write limits", ["write_approval", "write_capacity"]),
+      step("Optional public-web research", ["research"]),
       step("Real model and Instagram connectivity", ["ai_live", "instagram_live"]),
       status,
     );
@@ -221,19 +252,78 @@
     target.replaceChildren();
     const r = setupState.report;
     const blocked = r && !r.ready;
-    const workerReady = setupState.worker && setupState.worker.running;
+    const workerReady = setupState.worker && setupState.worker.running &&
+      !setupState.worker.last_error;
     const verifiedLive = r && r.live_probes &&
       ["ai_live", "instagram_live"].every((key) =>
         r.checks.some((check) => check.key === key && check.status === "pass"));
-    const title = !r ? "Setup has not been verified" :
+    const title = !r ? "Readiness unavailable. Nothing is verified." :
       blocked ? "Finish required setup" :
-      !verifiedLive ? "Configuration ready. Verify live connections." :
+      !verifiedLive ? "Configuration checked. Verify live connections." :
       !workerReady ? "Connections verified. Scheduler needs attention." :
       "Ready for a supervised campaign";
     target.append(make("strong", null, title),
       make("span", null, r && r.blockers.length ?
         r.blockers.length + " required check(s) need attention." :
+        !r ? "Review local service health and retry. Do not rely on older green checks." :
         "Live verification is read-only and never authorizes Instagram writes."));
+  }
+
+  function renderRecovery() {
+    const target = document.querySelector("#setup-recovery");
+    target.replaceChildren();
+    const report = setupState.report;
+    if (!report) {
+      const note = make("p", "setup-help",
+        "Readiness could not be verified. Check that the local console is running " +
+        "with instabotai ui, inspect local server logs, and retry. Do not paste " +
+        "access tokens or passwords into this browser.");
+      target.append(make("strong", null, "Recover local setup checks"), note,
+        makeButton("Retry local checks", "button-secondary",
+          () => refreshSetup(false)));
+      return;
+    }
+    const failures = report.checks.filter((check) =>
+      check.required && check.status === "fail");
+    const research = report.checks.find((check) => check.key === "research");
+    const liveComplete = ["ai_live", "instagram_live"].every((key) =>
+      report.checks.some((check) => check.key === key && check.status === "pass"));
+    const heading = failures.length ? "Resolve the required blockers" :
+      !liveComplete ? "Next: verify real connections" : "Review your campaign readiness";
+    target.append(make("strong", null, heading));
+    if (failures.length) {
+      const list = make("ul", "setup-recovery-list");
+      for (const check of failures) {
+        list.append(make("li", null,
+          check.label + ": " + (check.remediation || check.detail)));
+      }
+      target.append(list);
+      target.append(make("p", "setup-help",
+        "Make configuration changes in the local file and restart InstabotAI " +
+        "before rechecking. A browser selector never updates your runtime settings."));
+    } else if (!liveComplete) {
+      target.append(make("p", "setup-help",
+        "Static configuration checks do not prove that a model or Instagram " +
+        "account can be contacted. Choose Run live connections for read-only checks."));
+    } else {
+      target.append(make("p", "setup-help",
+        "AI and Instagram read paths passed live checks. Confirm scheduler health, " +
+        "review evidence, and keep every Instagram write subject to approval."));
+    }
+    if (research && research.status !== "pass") {
+      target.append(make("p", "setup-research-note",
+        "Research is optional and currently unavailable or unverified. " +
+        (research.remediation || "Check the research capability before using it.") +
+        " You can still use approved source material in Evidence Library."));
+    }
+    if (!setupState.worker || !setupState.worker.running || setupState.worker.last_error) {
+      target.append(make("p", "setup-recovery-worker",
+        "Scheduler progress is not verified. Inspect local logs and recheck " +
+        "before activating scheduled work."));
+    }
+    target.append(make("p", "setup-recovery-safety",
+      "Provider credentials stay in your local configuration. Live checks read " +
+      "provider state but never authorize Instagram writes."));
   }
 
   function routeToWorkspace(view) {
@@ -280,14 +370,20 @@
       "A campaign needs an objective and evidence or permitted research. Choose how " +
         "you want to begin; none of these paths publishes to Instagram.");
     const routes = make("div", "setup-routes");
+    const research = setupState.report && setupState.report.checks.find(
+      (check) => check.key === "research");
+    const researchGuide = research && research.status !== "pass" ?
+      "Research needs setup before it can run. " +
+        (research.remediation || "Verify the research package installation.") +
+        " You can save your own source material instead." :
+      "Investigate permitted public URLs, review the extracts, and save useful " +
+        "sources before creating a campaign.";
     routes.append(
       guidedRoute("I have source material",
         "Save your product details or approved brief in Evidence Library, " +
         "review the source, then select it to prepare a supervised draft.",
         "Save source material", "library"),
-      guidedRoute("I want to research first",
-        "Investigate permitted public URLs, review the extracts, and save useful " +
-        "sources before creating a campaign.",
+      guidedRoute("I want to research first", researchGuide,
         "Research my topic", "research"),
       guidedRoute("I have a business goal",
         "Start in AI Studio with your objective and evidence. Review the proposed " +
@@ -323,6 +419,7 @@
       renderConfig();
       renderChecks();
       renderProgress();
+      renderRecovery();
       renderCampaign();
 
       const heroLink = document.querySelector("#view-overview .hero [data-go]");
@@ -346,10 +443,22 @@
           readiness.ready ? "good" : "error");
       }
     } catch (error) {
-      showFlash("Could not check setup: " + error.message, "error");
-      const target = document.querySelector("#setup-progress");
-      target.replaceChildren(make("strong", null,
-        "Readiness information unavailable. No connection has been verified."));
+      setupState.report = null;
+      setupState.worker = null;
+      setupState.runtime = null;
+      setupState.campaignCount = null;
+      state.readiness = null;
+      const overview = document.querySelector("#readiness-list");
+      if (overview) {
+        overview.replaceChildren(make("p", "empty-state",
+          "Readiness is unavailable. Recheck local setup before relying on past results."));
+      }
+      renderChecks();
+      renderProgress();
+      renderRecovery();
+      renderCampaign();
+      showFlash("Could not verify local setup. Check the local server and retry. " +
+        "Previously verified statuses are no longer current.", "error");
     } finally {
       setupState.refreshing = false;
       buttons.forEach((button) => { button.disabled = false; });

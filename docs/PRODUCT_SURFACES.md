@@ -29,6 +29,30 @@ The real console capture is reproducible. Run the manual **Docs Visual Capture**
 **Remote bind:** rejected in the consumer alpha, even when the legacy `INSTABOTAI_UI_ALLOW_REMOTE` setting is enabled.  
 **Write authority:** policy-mediated only. Browser requests continue through durable campaign state, approval, policy, quota, idempotency, ledger, and provider authorities.
 
+### Recovery when first-run setup fails
+
+Get started exposes **seven** canonical readiness groups: durable state, AI provider,
+Instagram configuration, human write limits, optional research, real live connectivity,
+and scheduler. Each check presents the backend's own status, detail, and **Next**
+remediation independently. Optional research is distinguished from mandatory setup:
+when its dependency is absent, the Research starting path tells the user to install
+the optional [research] extra and restart, or use manually reviewed source material.
+
+If the readiness API fails, the UI invalidates its previous successful status and
+replaces old checks with an explicit **Nothing is verified** recovery state. A manual
+**Retry local checks** action restores verified results only after a successful
+response. The Overview readiness summary is also invalidated rather than left green.
+Scheduler failure details are never copied raw into the DOM: users receive safe local
+server-log guidance. Provider credentials must be edited in the local configuration
+file, never typed into a web form, and local config changes require a restart.
+
+Browser regression tests simulate missing Instagram credentials, an unwritable SQLite
+path, the optional research dependency, a stopped worker with a secret-looking
+exception, a readiness 503 outage, and a successful retry. Test fixtures affect only
+local browser requests; no provider writes are issued. These automated trials are
+not a replacement for real first-time human usability trials or authenticated
+Instagram connectivity testing.
+
 ### Guided first campaign
 
 Get started now renders the canonical readiness checks it previously computed but
