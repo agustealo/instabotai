@@ -370,14 +370,20 @@
       "A campaign needs an objective and evidence or permitted research. Choose how " +
         "you want to begin; none of these paths publishes to Instagram.");
     const routes = make("div", "setup-routes");
+    const research = setupState.report && setupState.report.checks.find(
+      (check) => check.key === "research");
+    const researchGuide = research && research.status !== "pass" ?
+      "Research needs setup before it can run. " +
+        (research.remediation || "Verify the research package installation.") +
+        " You can save your own source material instead." :
+      "Investigate permitted public URLs, review the extracts, and save useful " +
+        "sources before creating a campaign.";
     routes.append(
       guidedRoute("I have source material",
         "Save your product details or approved brief in Evidence Library, " +
         "review the source, then select it to prepare a supervised draft.",
         "Save source material", "library"),
-      guidedRoute("I want to research first",
-        "Investigate permitted public URLs, review the extracts, and save useful " +
-        "sources before creating a campaign.",
+      guidedRoute("I want to research first", researchGuide,
         "Research my topic", "research"),
       guidedRoute("I have a business goal",
         "Start in AI Studio with your objective and evidence. Review the proposed " +
