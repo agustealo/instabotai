@@ -399,3 +399,26 @@ def test_setup_recovery_has_per_check_actions_and_no_raw_worker_errors() -> None
     assert "Research needs setup before it can run" in script
     assert ".setup-recovery-list" in stylesheet
     assert ".setup-check-remediation" in stylesheet
+
+
+def test_browser_zoom_evidence_is_exact_head_and_not_committed_as_docs() -> None:
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "pythonapp.yml").read_text(
+        encoding="utf-8",
+    )
+    browser = (root / "tests" / "test_consumer_browser.py").read_text(
+        encoding="utf-8",
+    )
+    assert "test_enlarged_text_reflow_preserves_first_run_and_review_controls" in browser
+    assert '[(640, 2), (320, 4)]' in browser
+    assert "device_scale_factor=scale" in browser
+    assert "CAPTURE_PROVENANCE.json" in browser
+    assert 'os.environ.get("INSTABOTAI_SOURCE_REVISION", "local")' in browser
+    assert "github.event.pull_request.head.sha || github.sha" in workflow
+    assert workflow.count("Verify exact reviewed checkout") == 2
+    assert "INSTABOTAI_SOURCE_REVISION: " in workflow
+    assert 'name: instabotai-zoom-reflow-${{ github.sha }}' not in workflow
+    assert 'INSTABOTAI_VISUAL_EVIDENCE_DIR: browser-visual-evidence' in workflow
+    assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" in workflow
+    assert "if-no-files-found: error" in workflow
+    assert "retention-days: 14" in workflow

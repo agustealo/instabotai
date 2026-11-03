@@ -8,12 +8,14 @@ These tests are automation evidence, not a substitute for a human acceptance tri
 from __future__ import annotations
 
 import json
+import os
 import re
 import socket
 import threading
 import time
 import urllib.request
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 import uvicorn
@@ -906,3 +908,131 @@ def test_readiness_outage_invalidates_old_results_and_retry_recovers(
     expect(page.locator("#setup-recovery")).not_to_contain_text(
         "Recover local setup checks"
     )
+
+
+
+@pytest.mark.parametrize("width,scale", [(640, 2), (320, 4)])
+def test_enlarged_text_reflow_preserves_first_run_and_review_controls(
+    browser: Browser, consumer_url: str, width: int, scale: int,
+) -> None:
+    """1280px physical equivalent at 200%/400% reflow, not an actual browser zoom test."""
+
+    context = browser.new_context(
+        viewport={"width": width, "height": 450 if scale == 2 else 225},
+        device_scale_factor=scale,
+        reduced_motion="reduce",
+    )
+    try:
+        page = context.new_page()
+        page.route(
+            "**/api/campaigns?limit=1",
+            lambda route: route.fulfill(content_type="application/json", body="[]"),
+        )
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(consumer_url, wait_until="domcontentloaded")
+        expect(page.locator("#setup-checks .setup-check")).to_have_count(7)
+
+        def assert_reflow(workspace: str) -> None:
+            layout = page.evaluate("""() => ({
+                content: document.documentElement.scrollWidth,
+                viewport: window.innerWidth,
+                main: document.querySelector('#main-content').getBoundingClientRect().width,
+                menu: getComputedStyle(document.querySelector('#mobile-nav-toggle')).display,
+            })""")
+            assert layout["content"] <= layout["viewport"] + 2, (
+                f"{workspace} page overflow at {scale}x reflow: {layout}"
+            )
+            assert layout["main"] <= layout["viewport"] + 2, (
+                f"{workspace} content overflow at {scale}x reflow: {layout}"
+            )
+            assert layout["menu"] != "none", (
+                f"{workspace} must expose the mobile menu at {scale}x reflow"
+            )
+
+        def open_workspace(destination: str) -> None:
+            menu = page.locator("#mobile-nav-toggle")
+            menu.click()
+            page.locator(f'.nav-item[data-view="{destination}"]').click()
+            expect(page.locator("#view-" + destination)).to_have_class(
+                re.compile(r"\bis-active\b")
+            )
+            expect(page.locator("#view-title")).to_be_focused()
+            expect(menu).to_have_attribute("aria-expanded", "false")
+            assert_reflow(destination)
+
+        def capture(name: str) -> None:
+            target = os.environ.get("INSTABOTAI_VISUAL_EVIDENCE_DIR")
+            if not target or scale != 2:
+                return
+            folder = Path(target)
+            folder.mkdir(parents=True, exist_ok=True)
+            filename = f"{name}-200pct-reflow.png"
+            page.screenshot(
+                path=str(folder / filename), full_page=True,
+                animations="disabled",
+                mask=[page.locator(".setup-path"), page.locator("#model-chip")],
+            )
+
+        open_workspace("setup")
+        expect(page.locator("#setup-progress")).to_be_visible()
+        expect(page.locator("#setup-recovery")).to_be_visible()
+        expect(page.get_by_role("button", name="Recheck local setup")).to_be_visible()
+        expect(page.get_by_role("button", name="Save source material")).to_be_visible()
+        capture("get-started")
+
+        page.get_by_role("button", name="Save source material").click()
+        expect(page.locator("#view-library")).to_have_class(re.compile(r"\bis-active\b"))
+        assert_reflow("evidence-library")
+        title = f"Large-text reflow reviewed source {scale}"
+        save_source(page, title)
+        entry = page.locator(".library-entry").filter(has_text=title)
+        review = entry.get_by_role("button", name="Mark reviewed", exact=True)
+        expect(review).to_be_visible()
+        review.click()
+        dialog = page.locator("dialog[open]")
+        expect(dialog).to_be_visible()
+        dialog_bounds = dialog.bounding_box()
+        assert dialog_bounds is not None
+        assert dialog_bounds["width"] <= width + 2, dialog_bounds
+        assert dialog_bounds["height"] <= page.viewport_size["height"] + 2
+        assert page.evaluate(
+            "Boolean(document.activeElement.closest('dialog[open]'))"
+        ), "Native confirmation must take keyboard focus at enlarged reflow"
+        page.keyboard.press("Escape")
+        expect(dialog).to_have_count(0)
+        expect(entry).to_contain_text("Unverified")
+        capture("evidence-library")
+
+        open_workspace("campaigns")
+        expect(page.locator("#campaign-mode")).to_have_value("supervised")
+        expect(page.locator("#campaign-form")).to_be_visible()
+        assert_reflow("campaigns")
+        capture("campaigns")
+        assert not errors, f"Enlarged reflow produced JavaScript errors: {errors}"
+
+        if scale == 2 and os.environ.get("INSTABOTAI_VISUAL_EVIDENCE_DIR"):
+            target = Path(os.environ["INSTABOTAI_VISUAL_EVIDENCE_DIR"])
+            (target / "CAPTURE_PROVENANCE.json").write_text(
+                json.dumps({
+                    "source_commit": os.environ.get("INSTABOTAI_SOURCE_REVISION", "local"),
+                    "capture_kind": "real loopback browser with synthetic local data",
+                    "viewport_css_px": {"width": width, "height": 450},
+                    "device_scale_factor": scale,
+                    "reflow_equivalent": "1280px physical display at 200%",
+                    "browser_version": browser.version,
+                    "files": [
+                        "get-started-200pct-reflow.png",
+                        "evidence-library-200pct-reflow.png",
+                        "campaigns-200pct-reflow.png",
+                    ],
+                    "limitations": [
+                        "Simulated effective viewport and device scale; not browser zoom API",
+                        "No screenshot baseline or pixel-diff assertion",
+                        "No authorized Instagram login or writes",
+                        "Human readability and screen-reader acceptance not established",
+                    ],
+                }, indent=2) + "\n", encoding="utf-8",
+            )
+    finally:
+        context.close()

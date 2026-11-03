@@ -177,6 +177,30 @@ Source-level tests and automated CI do **not** establish that a human can comple
 - Automated font-size checks are not an accessibility certification. Before release, conduct
   human screen-reader, contrast, readability, 200% zoom and real-device touch evaluation.
 
+## 12. Enlarged-text and evidence-capture acceptance
+
+- Reflow the running console at **640 CSS pixels with a device scale of 2** and
+  **320 CSS pixels with a device scale of 4**, approximating the effective CSS
+  viewports on a 1280px-wide screen at 200% and 400% zoom. These are NOT proof
+  of actual browser zoom compatibility; repeat using real browser zoom manually.
+- At both effective widths, inspect Get started, Evidence Library and Campaigns.
+  Require no page-level horizontal scrolling, discoverable navigation, and
+  usable primary actions while allowing necessary vertical scrolling.
+- Confirm the keyboard focus follows navigation and a native evidence-review
+  confirmation stays within the viewport, accepts Escape, and leaves the source
+  unverified without an unintended write.
+- On an exact-head successful browser run, retain real local Chromium captures
+  for Get started, Evidence Library and Campaigns from the **200% equivalent**
+  as a short-lived GitHub Actions artifact. Record commit, Chromium version,
+  viewport and scale; redact the local configuration path and runtime chip.
+- Screenshots are evidence of rendered synthetic local state, **not** real
+  Instagram connectivity, publication, visual baseline approval, or accessibility
+  certification. Do not commit these images into docs/screenshots without human
+  review and an explicit provenance update.
+- Before consumer release, complete real Chrome/Firefox zoom at 200% and 400%,
+  keyboard and screen-reader testing, text spacing checks, high contrast and
+  touch target checks with human participants.
+
 ## Authority boundaries
 
 `InstabotApplication` remains the application service; `CampaignRuntime` owns
