@@ -1015,7 +1015,7 @@ def test_enlarged_text_reflow_preserves_first_run_and_review_controls(
             target = Path(os.environ["INSTABOTAI_VISUAL_EVIDENCE_DIR"])
             (target / "CAPTURE_PROVENANCE.json").write_text(
                 json.dumps({
-                    "source_commit": os.environ.get("GITHUB_SHA", "local"),
+                    "source_commit": os.environ.get("INSTABOTAI_SOURCE_REVISION", "local"),
                     "capture_kind": "real loopback browser with synthetic local data",
                     "viewport_css_px": {"width": width, "height": 450},
                     "device_scale_factor": scale,

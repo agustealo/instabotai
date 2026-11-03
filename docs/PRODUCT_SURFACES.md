@@ -369,6 +369,10 @@ chip are masked. The artifact is a visual candidate for human review, not a
 source-controlled screenshot, pixel-difference baseline, verified customer account,
 or consumer-release certificate.
 
+On pull requests, both gate jobs explicitly check out the real PR head SHA rather
+than the synthetic test-merge SHA. The artifact name and capture manifest use
+that same verified source SHA; on master pushes the SHA is the push commit.
+
 The captured commit must match the pull-request head or merged master being
 reviewed. Visual reviewers must inspect focus visibility, zoom overflow, typography,
 priority of approval controls, and error recovery. A screenshot by itself cannot
