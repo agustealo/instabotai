@@ -33,8 +33,19 @@ jobs:
           python -m pip install -e ".[dev]" "playwright==1.55.0"
           python -m playwright install --with-deps chromium
 
-      - name: Local browser journey smoke
+      - name: Local browser journey and zoom reflow proof
+        env:
+          INSTABOTAI_VISUAL_EVIDENCE_DIR: browser-visual-evidence
         run: python -m pytest tests/test_consumer_browser.py -q
+
+      - name: Upload verified read-only visual evidence
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: instabotai-zoom-reflow-${{ github.sha }}
+          path: browser-visual-evidence/
+          if-no-files-found: error
+          retention-days: 14
 
   quality:
     runs-on: ubuntu-24.04
