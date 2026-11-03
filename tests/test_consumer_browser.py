@@ -830,6 +830,10 @@ def test_setup_missing_credentials_stopped_worker_and_research_guidance_are_safe
             }),
         ),
     )
+    page.route(
+        "**/api/campaigns?limit=1",
+        lambda route: route.fulfill(content_type="application/json", body="[]"),
+    )
     page.locator('.nav-item[data-view="setup"]').click()
     checks = page.locator("#setup-checks")
     expect(checks.locator(".setup-check")).to_have_count(7)
