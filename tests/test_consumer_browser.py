@@ -712,7 +712,7 @@ def test_first_run_exposes_all_checkpoints_and_choose_your_starting_path(
             ),
         )
         page.goto(consumer_url, wait_until="domcontentloaded")
-        expect(page.locator("#setup-checks .setup-check")).to_have_count(6)
+        expect(page.locator("#setup-checks .setup-check")).to_have_count(7)
         if width <= 840:
             page.locator("#mobile-nav-toggle").click()
         page.locator('.nav-item[data-view="setup"]').click()
@@ -723,6 +723,7 @@ def test_first_run_exposes_all_checkpoints_and_choose_your_starting_path(
             "AI provider configuration",
             "Instagram account configuration",
             "Human approval and write limits",
+            "Optional public-web research",
             "Real model and Instagram connectivity",
             "Campaign scheduler",
         ):
@@ -779,3 +780,124 @@ def test_onboarding_existing_campaign_does_not_offer_new_user_routes(
     page.get_by_role("button", name="Open existing campaigns").click()
     expect(page.locator("#view-campaigns")).to_have_class(re.compile("is-active"))
     expect(page.locator("#view-title")).to_be_focused()
+
+
+def test_setup_missing_credentials_stopped_worker_and_research_guidance_are_safe(
+    page: Page, consumer_url: str,
+) -> None:
+    """The real setup UI must display server-owned fixes but no raw worker exception."""
+
+    expect(page.locator("#setup-checks .setup-check")).to_have_count(7)
+    report = page.request.get(consumer_url + "/api/readiness").json()
+    for check in report["checks"]:
+        if check["key"] == "state":
+            check.update(
+                status="fail",
+                detail="Durable SQLite state is not writable.",
+                remediation="Configure INSTABOTAI_STATE_DB_PATH to a writable file.",
+            )
+        elif check["key"] == "instagram_configuration":
+            check.update(
+                status="fail",
+                detail="Official account credentials are missing.",
+                remediation="Set INSTABOTAI_INSTAGRAM_ACCESS_TOKEN locally and restart.",
+            )
+        elif check["key"] == "research":
+            check.update(
+                status="warn",
+                required=False,
+                detail="The optional Crawl4AI package is not installed.",
+                remediation="Install InstabotAI with the [research] extra.",
+            )
+    report["ready"] = False
+    report["blockers"] = ["Durable state", "Instagram provider configuration"]
+    report["warnings"] = ["Research capability"]
+
+    page.route(
+        "**/api/readiness",
+        lambda route: route.fulfill(
+            content_type="application/json", body=json.dumps(report),
+        ),
+    )
+    page.route(
+        "**/api/worker",
+        lambda route: route.fulfill(
+            content_type="application/json",
+            body=json.dumps({
+                "enabled": True,
+                "running": False,
+                "last_error": "INSTABOTAI_INSTAGRAM_ACCESS_TOKEN=never-show-this-secret",
+            }),
+        ),
+    )
+    page.locator('.nav-item[data-view="setup"]').click()
+    checks = page.locator("#setup-checks")
+    expect(checks.locator(".setup-check")).to_have_count(7)
+    expect(page.locator("#setup-progress")).to_contain_text("Finish required setup")
+    expect(checks).to_contain_text("Durable SQLite state is not writable")
+    expect(checks).to_contain_text("Configure INSTABOTAI_STATE_DB_PATH")
+    expect(checks).to_contain_text("Set INSTABOTAI_INSTAGRAM_ACCESS_TOKEN locally")
+    expect(checks).to_contain_text("Optional public-web research")
+    expect(checks).to_contain_text("Next: Install InstabotAI with the [research]")
+    expect(checks).to_contain_text("Raw worker exceptions are not shown")
+    assert "never-show-this-secret" not in page.locator("#view-setup").inner_text()
+    expect(page.locator("#setup-recovery")).to_contain_text(
+        "Resolve the required blockers"
+    )
+    expect(page.locator("#setup-recovery")).to_contain_text(
+        "Research is optional"
+    )
+    expect(page.locator("#setup-campaign")).to_contain_text(
+        "Research needs setup before it can run"
+    )
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth + 2"
+    ), "Recovery instructions must not overflow the page"
+
+
+def test_readiness_outage_invalidates_old_results_and_retry_recovers(
+    page: Page,
+) -> None:
+    """A failed local read cannot keep previous green verification visible."""
+
+    expect(page.locator("#setup-checks .setup-check")).to_have_count(7)
+    page.locator('.nav-item[data-view="setup"]').click()
+    page.route(
+        "**/api/readiness",
+        lambda route: route.fulfill(
+            status=503,
+            content_type="application/json",
+            body=json.dumps({
+                "code": "local_unavailable",
+                "message": "server accidentally leaked INSTABOTAI_SECRET=never-display-me",
+            }),
+        ),
+    )
+    page.get_by_role("button", name="Recheck local setup").click()
+    expect(page.locator("#setup-progress")).to_contain_text(
+        "Readiness unavailable. Nothing is verified."
+    )
+    expect(page.locator("#setup-checks .setup-check")).to_have_count(1)
+    expect(page.locator("#setup-checks")).to_contain_text(
+        "No previous verification is current"
+    )
+    expect(page.locator("#readiness-list")).to_contain_text(
+        "Readiness is unavailable"
+    )
+    expect(page.locator("#setup-recovery")).to_contain_text(
+        "Recover local setup checks"
+    )
+    expect(page.locator("#setup-recovery")).to_contain_text(
+        "instabotai ui"
+    )
+    expect(page.get_by_role("button", name="Retry local checks")).to_be_visible()
+    assert "never-display-me" not in page.locator("body").inner_text()
+    page.unroute("**/api/readiness")
+    page.get_by_role("button", name="Retry local checks").click()
+    expect(page.locator("#setup-checks .setup-check")).to_have_count(7)
+    expect(page.locator("#setup-progress")).not_to_contain_text(
+        "Readiness unavailable"
+    )
+    expect(page.locator("#setup-recovery")).not_to_contain_text(
+        "Recover local setup checks"
+    )

@@ -382,3 +382,20 @@ def test_first_run_renders_all_readiness_checks_and_real_start_paths() -> None:
     assert 'setupState.campaignCount > 0' in script
     assert "document.querySelector(\"#view-overview.is-active\")" in script
     assert ".setup-routes" in css
+
+
+def test_setup_recovery_has_per_check_actions_and_no_raw_worker_errors() -> None:
+    root = Path(__file__).resolve().parents[1] / "instabotai" / "web" / "static"
+    script = (root / "setup.js").read_text(encoding="utf-8")
+    stylesheet = (root / "setup.css").read_text(encoding="utf-8")
+    assert 'step("Optional public-web research", ["research"])' in script
+    assert 'make("p", "setup-check-remediation", "Next: " + check.remediation)' in script
+    assert "function renderRecovery()" in script
+    assert "setupState.report = null" in script
+    assert "state.readiness = null" in script
+    assert 'showFlash("Could not verify local setup.' in script
+    assert 'worker && worker.running && !worker.last_error' in script
+    assert 'status.append(make("p", "setup-check-error", worker.last_error))' not in script
+    assert "Research needs setup before it can run" in script
+    assert ".setup-recovery-list" in stylesheet
+    assert ".setup-check-remediation" in stylesheet
