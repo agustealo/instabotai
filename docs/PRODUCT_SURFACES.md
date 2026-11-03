@@ -352,6 +352,28 @@ Consumer-trial readiness code was validated on exact candidate `12f93f1d5647ff17
 
 The PR description and newest exact-head GitHub Actions run remain the authority if later commits advance the branch.
 
+## Zoom reflow and visual evidence gate
+
+The Quality Gate browser-journey job now exercises Get started, Evidence Library
+and Campaigns at effective CSS widths of 640px and 320px with device scale factors
+of 2 and 4. This approximates reflow on a 1280px-wide display at 200% and 400%
+enlargement. It asserts navigation and keyboard focus, zero document-level
+horizontal overflow, confirmation dialog fit, and no accidental review approval.
+
+On success only, the job uploads a **14-day** `instabotai-zoom-reflow-<sha>`
+artifact containing real Chromium screenshots for the 200%-equivalent Get
+started, Evidence Library, and Campaigns views, plus `CAPTURE_PROVENANCE.json`.
+The browser uses the actual loopback application and canonical local state;
+screenshots are from synthetic local test data. The local config path and runtime
+chip are masked. The artifact is a visual candidate for human review, not a
+source-controlled screenshot, pixel-difference baseline, verified customer account,
+or consumer-release certificate.
+
+The captured commit must match the pull-request head or merged master being
+reviewed. Visual reviewers must inspect focus visibility, zoom overflow, typography,
+priority of approval controls, and error recovery. A screenshot by itself cannot
+certify real browser zoom, assistive-technology behavior, or real provider access.
+
 ## Why authenticated screenshots remain selective
 
 A real `ai-check` requires a reachable model. Real Instagram profile/write evidence requires account credentials. Repository documentation must not manufacture provider success, embed private account data, or substitute mock content just to make the product look populated.

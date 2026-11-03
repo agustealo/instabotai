@@ -971,7 +971,7 @@ def test_enlarged_text_reflow_preserves_first_run_and_review_controls(
             page.screenshot(
                 path=str(folder / filename), full_page=True,
                 animations="disabled",
-                mask=[page.locator("#setup-path"), page.locator("#model-chip")],
+                mask=[page.locator(".setup-path"), page.locator("#model-chip")],
             )
 
         open_workspace("setup")
